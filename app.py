@@ -101,7 +101,22 @@ def init_sqlite():
         )
     """)
     
-    # Dados iniciais padronizados
+    # Migração automática para bancos já existentes
+    c.execute("PRAGMA table_info(projetos)")
+    colunas_existentes = [col[1] for col in c.fetchall()]
+    colunas_necessarias = {
+        "peso_suporte_g": "REAL DEFAULT 0.0",
+        "trocas_filamento": "INTEGER DEFAULT 0",
+        "tempo_prep_min": "REAL DEFAULT 7.0"
+    }
+    for col_nome, col_tipo in colunas_necessarias.items():
+        if col_nome not in colunas_existentes:
+            try:
+                c.execute(f"ALTER TABLE projetos ADD COLUMN {col_nome} {col_tipo}")
+            except Exception:
+                pass
+
+    # Dados iniciais
     c.execute("SELECT COUNT(*) FROM produtos")
     if c.fetchone()[0] == 0:
         c.executemany("INSERT INTO produtos (nome, categoria, peso_padrao_g, tempo_padrao_h, descricao) VALUES (?, ?, ?, ?, ?)", [
@@ -146,7 +161,7 @@ menu = st.sidebar.radio("Navegação", [
 ])
 
 # ==========================================
-# 1. NOVA FICHA DE PRODUÇÃO (CÁLCULO + FATIADOR)
+# 1. NOVA FICHA DE PRODUÇÃO
 # ==========================================
 if menu == "🧮 Nova Ficha de Produção":
     st.title("🧮 Ficha de Produção & Precificação Completa")
@@ -213,9 +228,10 @@ if menu == "🧮 Nova Ficha de Produção":
 
             st.markdown("---")
             st.markdown("#### ⏱️ Tempos do Fatiamento")
+            tempo_prep_min = st.number_input("Tempo Preparação (Minutos)", value=7.0, step=1.0, help="Nivelamento, aquecimento de mesa")
+            
             col_t1, col_t2 = st.columns(2)
             with col_t1:
-                tempo_prep_min = st.number_input("Tempo Preparação (Min)", value=7.0, step=1.0, help="Nivelamento, aquecimento de mesa")
                 horas_imp = st.number_input("Modelo - Horas", value=3, min_value=0)
             with col_t2:
                 mins_imp = st.number_input("Modelo - Minutos", value=45, min_value=0, max_value=59)
@@ -337,7 +353,7 @@ if menu == "🧮 Nova Ficha de Produção":
         st.success(f"✅ Ficha de Produção de '{nome_proj}' gravada no histórico!")
 
 # ==========================================
-# 2. CATÁLOGO DE PRODUTOS (CRUD UNIFICADO DE TELA ÚNICA)
+# 2. CATÁLOGO DE PRODUTOS (CRUD UNIFICADO)
 # ==========================================
 elif menu == "📁 Catálogo de Produtos":
     st.title("📁 Catálogo de Produtos & Peças (CRUD Unificado)")
@@ -347,7 +363,6 @@ elif menu == "📁 Catálogo de Produtos":
     produtos_df = pd.read_sql("SELECT * FROM produtos ORDER BY nome ASC", conn)
     conn.close()
 
-    # Seleção Unificada: Novo ou Existente
     options_crud = ["➕ [NOVO CADASTRO]"] + [f"✏️ {row['nome']} ({row['categoria']})" for _, row in produtos_df.iterrows()]
     selected_option = st.selectbox("Selecione uma Ação ou Produto para Editar/Excluir:", options_crud)
 
@@ -423,7 +438,7 @@ elif menu == "📁 Catálogo de Produtos":
     st.dataframe(produtos_df, use_container_width=True, hide_index=True)
 
 # ==========================================
-# 3. GESTÃO DE INSUMOS (CRUD UNIFICADO DE TELA ÚNICA)
+# 3. GESTÃO DE INSUMOS (CRUD UNIFICADO)
 # ==========================================
 elif menu == "📦 Gestão de Insumos":
     st.title("📦 Gestão de Insumos & Matéria-Prima (CRUD Unificado)")
@@ -505,7 +520,7 @@ elif menu == "📦 Gestão de Insumos":
     st.dataframe(insumos_df, use_container_width=True, hide_index=True)
 
 # ==========================================
-# 4. GESTÃO DE IMPRESSORAS (CRUD UNIFICADO DE TELA ÚNICA)
+# 4. GESTÃO DE IMPRESSORAS (CRUD UNIFICADO)
 # ==========================================
 elif menu == "🖨️ Gestão de Impressoras":
     st.title("🖨️ Gestão de Impressoras & Equipamentos (CRUD Unificado)")
@@ -586,7 +601,7 @@ elif menu == "🖨️ Gestão de Impressoras":
     st.dataframe(imp_df, use_container_width=True, hide_index=True)
 
 # ==========================================
-# 5. HISTÓRICO DE ORÇAMENTOS (CRUD UNIFICADO DE TELA ÚNICA)
+# 5. HISTÓRICO DE ORÇAMENTOS (CRUD UNIFICADO)
 # ==========================================
 elif menu == "📜 Histórico de Orçamentos":
     st.title("📜 Histórico de Orçamentos & Lotes (CRUD Unificado)")
