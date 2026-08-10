@@ -322,5 +322,3 @@ elif menu == "📜 Histórico de Projetos":
             st.rerun()
     else:
         st.info("Nenhum orçamento salvo no banco de dados ainda.")
-
-```
