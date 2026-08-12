@@ -368,5 +368,3 @@ elif menu == "📜 Histórico de Projetos":
             conn.cursor().execute("DELETE FROM historico")
             conn.commit()
             st.rerun()
-
-```
