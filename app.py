@@ -84,7 +84,6 @@ def buscar_shopee(termo_busca):
             
             for item_wrapper in itens:
                 item = item_wrapper.get('item_basic', {})
-                # O preço da Shopee na API vem multiplicado por 100.000
                 preco = item.get('price', 0) / 100000 
                 marca = item.get('brand', 'Não informada')
                 if marca in ["None", "0", "", None]: marca = "Não informada"
@@ -117,7 +116,13 @@ def buscar_shopee(termo_busca):
 st.set_page_config(page_title="3D Calc Pro", page_icon="🎲", layout="wide")
 
 st.sidebar.title("🎲 3D Calc Pro")
-menu = st.sidebar.radio("Navegação", ["🧮 Calculadora de Orçamentos", "🔎 Radar de Preços (ML & Shopee)", "⚙️ Gerenciar Materiais & Máquinas", "📜 Histórico de Projetos"])
+menu = st.sidebar.radio("Navegação", [
+    "🧮 Calculadora de Orçamentos", 
+    "🧩 Fatiamento Otimizado",
+    "🔎 Radar de Preços (ML & Shopee)", 
+    "⚙️ Gerenciar Materiais & Máquinas", 
+    "📜 Histórico de Projetos"
+])
 kwh_cost = st.sidebar.number_input("Custo da Energia Elétrica (R$ / kWh)", value=1.25, step=0.05)
 
 
@@ -179,7 +184,99 @@ if menu == "🧮 Calculadora de Orçamentos":
                 st.success("✅ Salvo no banco de dados!")
 
 
-# --- TELA 2: RADAR DE PREÇOS ---
+# --- TELA 2: FATIAMENTO OTIMIZADO ---
+elif menu == "🧩 Fatiamento Otimizado":
+    st.title("🧩 Assistente de Fatiamento Otimizado")
+    st.caption("Recomendações técnicas para fatiadores (Bambu Studio, OrcaSlicer, PrusaSlicer, Cura) com base na aplicação do projeto.")
+
+    col_in, col_out = st.columns([1, 1], gap="large")
+
+    with col_in:
+        st.subheader("🎯 Requisitos do Projeto")
+        
+        categoria = st.selectbox(
+            "Tipo de Aplicação",
+            [
+                "Decorativo / Visual (Sem esforço mecânico)",
+                "Funcional Leve (Suporte de celular, caixas organizadoras)",
+                "Estrutural Médio / Pesado (Suporte de Notebook, suporte de parede)",
+                "Peça Mecânica / Alto Impacto (Engrenagens, presilhas sob tensão)",
+                "Alta Exposição ao Calor / Ambiente Externo"
+            ]
+        )
+
+        bico = st.selectbox("Diâmetro do Bico (Nozzle)", [0.2, 0.4, 0.6, 0.8], index=1)
+        
+        esforco = st.select_slider(
+            "Carga de Peso / Esforço Mecânico Estimado",
+            options=["Nenhum (< 200g)", "Leve (< 1 kg)", "Médio (1 kg a 3 kg)", "Pesado (> 3 kg)"]
+        )
+
+    # Matriz de Regras de Fatiamento
+    if "Decorativo" in categoria:
+        paredes = 2
+        infill = 10
+        padrao = "Lightning / Grid"
+        topo_base = "3 Topo / 3 Base"
+        gerador = "Arachne"
+        mat_rec = "PLA"
+        dica = "Foco em acabamento estético e economia de filamento. Não recomendado para suportar peso."
+    elif "Leve" in categoria and esforco != "Pesado (> 3 kg)":
+        paredes = 3
+        infill = 15
+        padrao = "Gyroid / Cubic"
+        topo_base = "4 Topo / 3 Base"
+        gerador = "Arachne"
+        mat_rec = "PLA ou PETG"
+        dica = "Resistência adequada para uso cotidiano simples, como apoios leves."
+    elif "Estrutural Médio" in categoria or esforco in ["Médio (1 kg a 3 kg)", "Pesado (> 3 kg)"]:
+        paredes = 4
+        infill = 25
+        padrao = "Gyroid"
+        topo_base = "5 Topo / 4 Base"
+        gerador = "Arachne"
+        mat_rec = "PLA Reforçado ou PETG"
+        dica = "Configuração ideal para notebooks pesados (ex: Acer Nitro 5). As 4 paredes absorvem a flexão sem trincar."
+    elif "Mecânica" in categoria:
+        paredes = 5
+        infill = 40
+        padrao = "3D Honeycomb / Gyroid"
+        topo_base = "5 Topo / 5 Base"
+        gerador = "Clássico"
+        mat_rec = "PETG / ABS / ASA"
+        dica = "Máxima coesão de camadas para resistir à torção, atrito e impactos repetidos."
+    else:
+        paredes = 4
+        infill = 30
+        padrao = "Gyroid"
+        topo_base = "5 Topo / 4 Base"
+        gerador = "Arachne"
+        mat_rec = "PETG / ASA / ABS"
+        dica = "Atenção: O PLA amolece acima de 50°C. Para contato direto com saídas de ar quente ou sol, use PETG ou ASA."
+
+    with col_out:
+        st.subheader("⚙️ Parâmetros Recomendados para o Slicer")
+        
+        st.info(f"💡 **Diretriz de Impressão:** {dica}")
+
+        m1, m2 = st.columns(2)
+        m1.metric("Paredes (Wall Loops)", f"{paredes} voltas")
+        m2.metric("Preenchimento (Infill)", f"{infill}%")
+
+        m3, m4 = st.columns(2)
+        m3.metric("Padrão de Infill", padrao)
+        m4.metric("Camadas Topo / Base", topo_base)
+
+        st.divider()
+        
+        df_resumo = pd.DataFrame({
+            "Parâmetro Avançado": ["Gerador de Parede", "Material Indicado", "Bico Selecionado"],
+            "Configuração Recomendada": [gerador, mat_rec, f"{bico} mm"]
+        })
+        st.dataframe(df_resumo, use_container_width=True, hide_index=True)
+
+
+# --- TELA 3: RADAR DE PREÇOS ---
 elif menu == "🔎 Radar de Preços (ML & Shopee)":
     st.title("🔎 Radar de Preços e Qualidade")
     st.caption("Faça uma varredura cruzada entre Mercado Livre e Shopee para garantir o melhor custo-benefício para seus projetos.")
@@ -210,7 +307,6 @@ elif menu == "🔎 Radar de Preços (ML & Shopee)":
     if 'busca_radar' in st.session_state and not st.session_state['busca_radar'].empty:
         df = st.session_state['busca_radar'].copy()
         
-        # Filtros de Ordenação
         if ordem == "Menor Preço":
             df = df.sort_values(by="Preço (R$)", ascending=True)
         elif ordem == "Maior Preço":
@@ -251,7 +347,7 @@ elif menu == "🔎 Radar de Preços (ML & Shopee)":
         st.warning("Nenhum resultado retornado. Tente um termo diferente ou os servidores podem ter bloqueado o robô temporariamente.")
 
 
-# --- TELA 3 e 4: GERENCIAR E HISTÓRICO (Mantidos Inalterados para focar na inovação) ---
+# --- TELA 4: GERENCIAR MATERIAIS & MÁQUINAS ---
 elif menu == "⚙️ Gerenciar Materiais & Máquinas":
     st.title("⚙️ Gerenciamento")
     tab_mat, tab_imp = st.tabs(["📦 Materiais", "🖨️ Impressoras"])
@@ -261,6 +357,7 @@ elif menu == "⚙️ Gerenciar Materiais & Máquinas":
     with tab_imp:
         st.dataframe(pd.read_sql("SELECT id, nome as 'Modelo', watts as 'Consumo (W)', preco_maquina as 'Valor (R$)', vida_util_h as 'Vida Útil (h)' FROM impressoras", conn), hide_index=True)
 
+# --- TELA 5: HISTÓRICO DE PROJETOS ---
 elif menu == "📜 Histórico de Projetos":
     st.title("📜 Histórico")
     conn = get_db_connection()
@@ -271,3 +368,5 @@ elif menu == "📜 Histórico de Projetos":
             conn.cursor().execute("DELETE FROM historico")
             conn.commit()
             st.rerun()
+
+```
