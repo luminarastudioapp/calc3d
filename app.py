@@ -1,11 +1,9 @@
-import streamlit as st
 import sqlite3
 import pandas as pd
-import requests
-import urllib.parse
 from datetime import datetime
+import streamlit as st
 
-# --- 1. CONFIGURAÇÃO E CRIAÇÃO DO BANCO DE DADOS (SQLite) ---
+# --- 1. CONFIGURAÇÃO E BANCO DE DADOS (SQLite) ---
 DB_NAME = "3d_calc_pro.db"
 
 def init_db():
@@ -23,8 +21,10 @@ def init_db():
     cursor.execute("SELECT COUNT(*) FROM impressoras")
     if cursor.fetchone()[0] == 0:
         cursor.executemany("INSERT INTO impressoras (nome, watts, preco_maquina, vida_util_h) VALUES (?, ?, ?, ?)", [
-            ("Ender 3 / V2", 130.0, 1800.0, 4000.0), ("Bambu Lab A1 + AMS Lite", 150.0, 4200.0, 5000.0), 
-            ("Bambu X1C", 350.0, 11000.0, 6000.0), ("Impressora Resina", 60.0, 2500.0, 3000.0)
+            ("Ender 3 / V2", 130.0, 1800.0, 4000.0), 
+            ("Bambu Lab A1 + AMS Lite", 150.0, 4200.0, 5000.0), 
+            ("Bambu X1C", 350.0, 11000.0, 6000.0), 
+            ("Impressora Resina", 60.0, 2500.0, 3000.0)
         ])
         
     conn.commit()
@@ -35,83 +35,6 @@ init_db()
 def get_db_connection():
     return sqlite3.connect(DB_NAME)
 
-# --- FUNÇÕES DE BUSCA (API) ---
-def buscar_mercadolivre(termo_busca):
-    termo_codificado = urllib.parse.quote(termo_busca)
-    url = f"https://api.mercadolibre.com/sites/MLB/search?q={termo_codificado}&limit=20"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"}
-    
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            resultados = []
-            for item in data.get('results', []):
-                marca = "Não informada"
-                for attr in item.get('attributes', []):
-                    if attr.get('id') == 'BRAND':
-                        marca = attr.get('value_name', 'Não informada')
-                        break
-                
-                resultados.append({
-                    "Plataforma": "🟡 Mercado Livre",
-                    "Título": item.get('title'),
-                    "Preço (R$)": float(item.get('price', 0.0)),
-                    "Marca": marca,
-                    "Avaliação": 0.0, # ML não fornece rating na busca simples
-                    "Link": item.get('permalink'),
-                    "Imagem": item.get('thumbnail')
-                })
-            return pd.DataFrame(resultados)
-        return pd.DataFrame()
-    except Exception:
-        return pd.DataFrame()
-
-def buscar_shopee(termo_busca):
-    termo_codificado = urllib.parse.quote(termo_busca)
-    url = f"https://shopee.com.br/api/v4/search/search_items?keyword={termo_codificado}&limit=20"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        "Accept": "application/json"
-    }
-    
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            resultados = []
-            itens = data.get('items', [])
-            
-            for item_wrapper in itens:
-                item = item_wrapper.get('item_basic', {})
-                preco = item.get('price', 0) / 100000 
-                marca = item.get('brand', 'Não informada')
-                if marca in ["None", "0", "", None]: marca = "Não informada"
-                
-                avaliacao = round(item.get('item_rating', {}).get('rating_star', 0.0), 1)
-                
-                shopid = item.get('shopid')
-                itemid = item.get('itemid')
-                link = f"https://shopee.com.br/product/{shopid}/{itemid}"
-                
-                image_id = item.get('image')
-                imagem = f"https://cf.shopee.com.br/file/{image_id}" if image_id else ""
-                
-                resultados.append({
-                    "Plataforma": "🟠 Shopee",
-                    "Título": item.get('name', 'Sem título'),
-                    "Preço (R$)": float(preco),
-                    "Marca": marca,
-                    "Avaliação": avaliacao,
-                    "Link": link,
-                    "Imagem": imagem
-                })
-            return pd.DataFrame(resultados)
-        return pd.DataFrame()
-    except Exception:
-        return pd.DataFrame()
-
-
 # --- 2. CONFIGURAÇÃO DA PÁGINA STREAMLIT ---
 st.set_page_config(page_title="3D Calc Pro", page_icon="🎲", layout="wide")
 
@@ -119,7 +42,6 @@ st.sidebar.title("🎲 3D Calc Pro")
 menu = st.sidebar.radio("Navegação", [
     "🧮 Calculadora de Orçamentos", 
     "🧩 Fatiamento Otimizado",
-    "🔎 Radar de Preços (ML & Shopee)", 
     "⚙️ Gerenciar Materiais & Máquinas", 
     "📜 Histórico de Projetos"
 ])
@@ -276,95 +198,73 @@ elif menu == "🧩 Fatiamento Otimizado":
         st.dataframe(df_resumo, use_container_width=True, hide_index=True)
 
 
-# --- TELA 3: RADAR DE PREÇOS ---
-elif menu == "🔎 Radar de Preços (ML & Shopee)":
-    st.title("🔎 Radar de Preços e Qualidade")
-    st.caption("Faça uma varredura cruzada entre Mercado Livre e Shopee para garantir o melhor custo-benefício para seus projetos.")
-
-    col_busca, col_plat, col_ordem = st.columns([2, 1, 1])
-    
-    with col_busca:
-        termo = st.text_input("O que você procura?", value="Filamento PLA 1kg")
-    with col_plat:
-        plataforma = st.selectbox("Plataforma", ["Ambas", "Shopee", "Mercado Livre"])
-    with col_ordem:
-        ordem = st.selectbox("Organizar por", ["Menor Preço", "Maior Preço", "Melhor Avaliação", "Marca (A-Z)"])
-    
-    if st.button("🚀 Iniciar Varredura", type="primary"):
-        with st.spinner("Conectando aos servidores... (A Shopee pode demorar um pouco mais ou bloquear requisições)"):
-            df_final = pd.DataFrame()
-            
-            if plataforma in ["Ambas", "Mercado Livre"]:
-                df_ml = buscar_mercadolivre(termo)
-                df_final = pd.concat([df_final, df_ml], ignore_index=True)
-                
-            if plataforma in ["Ambas", "Shopee"]:
-                df_shopee = buscar_shopee(termo)
-                df_final = pd.concat([df_final, df_shopee], ignore_index=True)
-            
-            st.session_state['busca_radar'] = df_final
-
-    if 'busca_radar' in st.session_state and not st.session_state['busca_radar'].empty:
-        df = st.session_state['busca_radar'].copy()
-        
-        if ordem == "Menor Preço":
-            df = df.sort_values(by="Preço (R$)", ascending=True)
-        elif ordem == "Maior Preço":
-            df = df.sort_values(by="Preço (R$)", ascending=False)
-        elif ordem == "Melhor Avaliação":
-            df = df.sort_values(by="Avaliação", ascending=False)
-        elif ordem == "Marca (A-Z)":
-            df = df.sort_values(by="Marca", ascending=True)
-
-        st.subheader(f"Resultados encontrados: {len(df)} ofertas")
-        
-        for idx, row in df.iterrows():
-            with st.container():
-                c_img, c_info, c_acao = st.columns([1, 3, 1])
-                
-                with c_img:
-                    if row['Imagem']:
-                        st.image(row['Imagem'], width=90)
-                with c_info:
-                    st.markdown(f"**[{row['Plataforma']}] [{row['Título']}]({row['Link']})**")
-                    estrelas = f"⭐ {row['Avaliação']}/5.0" if row['Avaliação'] > 0 else "⭐ Sem Nota Pública"
-                    st.caption(f"🏷️ Marca: **{row['Marca']}** | {estrelas}")
-                    st.markdown(f"💵 **R$ {row['Preço (R$)']:.2f}**")
-                with c_acao:
-                    if st.button("➕ Enviar pro App", key=f"add_{idx}"):
-                        conn = get_db_connection()
-                        cursor = conn.cursor()
-                        try:
-                            cursor.execute("INSERT INTO materiais (nome, preco_kg) VALUES (?, ?)", (row['Título'][:35], row['Preço (R$)']))
-                            conn.commit()
-                            st.success("Salvo!")
-                        except sqlite3.IntegrityError:
-                            st.warning("Já existe.")
-                        finally:
-                            conn.close()
-                st.divider()
-    elif 'busca_radar' in st.session_state:
-        st.warning("Nenhum resultado retornado. Tente um termo diferente ou os servidores podem ter bloqueado o robô temporariamente.")
-
-
-# --- TELA 4: GERENCIAR MATERIAIS & MÁQUINAS ---
+# --- TELA 3: GERENCIAR MATERIAIS & MÁQUINAS ---
 elif menu == "⚙️ Gerenciar Materiais & Máquinas":
-    st.title("⚙️ Gerenciamento")
-    tab_mat, tab_imp = st.tabs(["📦 Materiais", "🖨️ Impressoras"])
+    st.title("⚙️ Gerenciamento de Preços e Maquinário")
+    tab_mat, tab_imp = st.tabs(["📦 Materiais Cadastrados", "🖨️ Impressoras Cadastradas"])
+    
     with tab_mat:
         conn = get_db_connection()
-        st.dataframe(pd.read_sql("SELECT id, nome as 'Nome', preco_kg as 'Preço/KG (R$)' FROM materiais", conn), hide_index=True)
-    with tab_imp:
-        st.dataframe(pd.read_sql("SELECT id, nome as 'Modelo', watts as 'Consumo (W)', preco_maquina as 'Valor (R$)', vida_util_h as 'Vida Útil (h)' FROM impressoras", conn), hide_index=True)
+        materiais_df = pd.read_sql("SELECT id, nome as 'Nome', preco_kg as 'Preço/KG (R$)' FROM materiais", conn)
+        st.dataframe(materiais_df, use_container_width=True, hide_index=True)
 
-# --- TELA 5: HISTÓRICO DE PROJETOS ---
+        st.markdown("### Cadastrar / Atualizar Material")
+        with st.form("form_material"):
+            nome_mat = st.text_input("Nome do Material (ex: PLA Silk Gold)")
+            preco_mat = st.number_input("Preço do KG (R$)", min_value=0.0, value=130.0)
+            btn_mat = st.form_submit_button("Salvar no Banco")
+
+            if btn_mat and nome_mat:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO materiais (nome, preco_kg) VALUES (?, ?)
+                    ON CONFLICT(nome) DO UPDATE SET preco_kg=excluded.preco_kg
+                """, (nome_mat, preco_mat))
+                conn.commit()
+                conn.close()
+                st.success(f"Material '{nome_mat}' salvo!")
+                st.rerun()
+
+    with tab_imp:
+        conn = get_db_connection()
+        impressoras_df = pd.read_sql("SELECT id, nome as 'Modelo', watts as 'Consumo (W)', preco_maquina as 'Valor (R$)', vida_util_h as 'Vida Útil (h)' FROM impressoras", conn)
+        st.dataframe(impressoras_df, use_container_width=True, hide_index=True)
+
+        st.markdown("### Cadastrar / Atualizar Impressora")
+        with st.form("form_impressora"):
+            nome_imp = st.text_input("Modelo da Impressora")
+            watts_imp = st.number_input("Consumo em Watts", value=350)
+            preco_imp = st.number_input("Valor de Compra (R$)", value=4500.0)
+            vida_imp = st.number_input("Vida Útil Estimada em Horas", value=5000)
+            btn_imp = st.form_submit_button("Salvar no Banco")
+
+            if btn_imp and nome_imp:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO impressoras (nome, watts, preco_maquina, vida_util_h) VALUES (?, ?, ?, ?)
+                    ON CONFLICT(nome) DO UPDATE SET watts=excluded.watts, preco_maquina=excluded.preco_maquina, vida_util_h=excluded.vida_util_h
+                """, (nome_imp, watts_imp, preco_imp, vida_imp))
+                conn.commit()
+                conn.close()
+                st.success(f"Impressora '{nome_imp}' salva!")
+                st.rerun()
+
+
+# --- TELA 4: HISTÓRICO DE PROJETOS ---
 elif menu == "📜 Histórico de Projetos":
-    st.title("📜 Histórico")
+    st.title("📜 Histórico de Orçamentos")
     conn = get_db_connection()
-    df_hist = pd.read_sql("SELECT * FROM historico ORDER BY id DESC", conn)
+    df_hist = pd.read_sql("SELECT id, nome_projeto as 'Projeto', material as 'Material', peso_g as 'Peso (g)', tempo_h as 'Tempo (h)', custo_total as 'Custo (R$)', preco_venda as 'Venda (R$)', data as 'Data' FROM historico ORDER BY id DESC", conn)
+    conn.close()
+
     if not df_hist.empty:
-        st.dataframe(df_hist, hide_index=True)
-        if st.button("🗑️ Limpar"):
+        st.dataframe(df_hist, use_container_width=True, hide_index=True)
+        if st.button("🗑️ Limpar Todo o Histórico"):
+            conn = get_db_connection()
             conn.cursor().execute("DELETE FROM historico")
             conn.commit()
+            conn.close()
+            st.success("Histórico limpo!")
             st.rerun()
+    else:
+        st.info("Nenhum orçamento salvo no banco de dados ainda.")
