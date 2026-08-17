@@ -88,7 +88,7 @@ menu = st.sidebar.radio("Módulos do Sistema", [
 kwh_cost = st.sidebar.number_input("Custo da Energia Elétrica (R$ / kWh)", value=1.25, step=0.05)
 
 # =====================================================================
-# MÓDULO 1: CADASTROS (CRUD COMPLETO)
+# MÓDULO 1: CADASTROS (CRUD COMPLETO COM FEEDBACK VISUAL)
 # =====================================================================
 if menu == "⚙️ Módulo 1: CADASTROS":
     st.title("⚙️ Cadastros Base do Sistema")
@@ -114,6 +114,7 @@ if menu == "⚙️ Módulo 1: CADASTROS":
                         conn.cursor().execute("INSERT INTO catalogo_pecas (nome, fotos_b64) VALUES (?, ?)", (nome_peca, fotos_json))
                         conn.commit()
                         st.success("✅ Cadastrado com sucesso!")
+                        import time; time.sleep(1.5)
                         st.rerun()
                     except sqlite3.IntegrityError:
                         st.error("Já existe uma peça com este nome.")
@@ -121,21 +122,25 @@ if menu == "⚙️ Módulo 1: CADASTROS":
         elif acao_peca == "Editar Nome":
             if not cat_df.empty:
                 peca_ed = st.selectbox("Selecione a Peça", cat_df['Nome'].tolist(), key="sel_ed_peca")
-                peca_id = cat_df[cat_df['Nome'] == peca_ed]['id'].values[0]
+                peca_id = int(cat_df[cat_df['Nome'] == peca_ed]['id'].values[0])
                 with st.form("form_ed_peca"):
                     novo_nome = st.text_input("Novo Nome", value=peca_ed)
                     if st.form_submit_button("Atualizar"):
                         conn.cursor().execute("UPDATE catalogo_pecas SET nome=? WHERE id=?", (novo_nome, peca_id))
                         conn.commit()
+                        st.success("✅ Alterado com sucesso!")
+                        import time; time.sleep(1.5)
                         st.rerun()
                         
         elif acao_peca == "Excluir":
             if not cat_df.empty:
                 peca_del = st.selectbox("Selecione a Peça", cat_df['Nome'].tolist(), key="sel_del_peca")
-                peca_id = cat_df[cat_df['Nome'] == peca_del]['id'].values[0]
+                peca_id = int(cat_df[cat_df['Nome'] == peca_del]['id'].values[0])
                 if st.button("🚨 Confirmar Exclusão"):
                     conn.cursor().execute("DELETE FROM catalogo_pecas WHERE id=?", (peca_id,))
                     conn.commit()
+                    st.success("✅ Excluído com sucesso!")
+                    import time; time.sleep(1.5)
                     st.rerun()
         conn.close()
 
@@ -155,13 +160,15 @@ if menu == "⚙️ Módulo 1: CADASTROS":
                 if st.form_submit_button("Salvar") and nome_mat:
                     conn.cursor().execute("INSERT INTO materiais (nome, preco_kg) VALUES (?, ?)", (nome_mat, preco_mat))
                     conn.commit()
+                    st.success("✅ Cadastrado com sucesso!")
+                    import time; time.sleep(1.5)
                     st.rerun()
                     
         elif acao_mat == "Editar":
             if not materiais_df.empty:
                 mat_ed = st.selectbox("Selecione para Editar", materiais_df['Nome'].tolist(), key="sel_ed_mat")
-                mat_id = materiais_df[materiais_df['Nome'] == mat_ed]['id'].values[0]
-                mat_preco_atual = materiais_df[materiais_df['Nome'] == mat_ed]['Preço/KG (R$)'].values[0]
+                mat_id = int(materiais_df[materiais_df['Nome'] == mat_ed]['id'].values[0])
+                mat_preco_atual = float(materiais_df[materiais_df['Nome'] == mat_ed]['Preço/KG (R$)'].values[0])
                 
                 with st.form("form_edita_mat"):
                     novo_nome = st.text_input("Nome", value=mat_ed)
@@ -169,15 +176,19 @@ if menu == "⚙️ Módulo 1: CADASTROS":
                     if st.form_submit_button("Atualizar"):
                         conn.cursor().execute("UPDATE materiais SET nome=?, preco_kg=? WHERE id=?", (novo_nome, novo_preco, mat_id))
                         conn.commit()
+                        st.success("✅ Alterado com sucesso!")
+                        import time; time.sleep(1.5)
                         st.rerun()
                         
         elif acao_mat == "Excluir":
              if not materiais_df.empty:
                 mat_del = st.selectbox("Selecione para Excluir", materiais_df['Nome'].tolist(), key="sel_del_mat")
-                mat_id = materiais_df[materiais_df['Nome'] == mat_del]['id'].values[0]
+                mat_id = int(materiais_df[materiais_df['Nome'] == mat_del]['id'].values[0])
                 if st.button("🚨 Confirmar Exclusão", key="btn_del_mat"):
                     conn.cursor().execute("DELETE FROM materiais WHERE id=?", (mat_id,))
                     conn.commit()
+                    st.success("✅ Excluído com sucesso!")
+                    import time; time.sleep(1.5)
                     st.rerun()
         conn.close()
 
@@ -199,12 +210,15 @@ if menu == "⚙️ Módulo 1: CADASTROS":
                 if st.form_submit_button("Salvar Máquina") and nome_imp:
                     conn.cursor().execute("INSERT INTO impressoras (nome, watts, preco_maquina, vida_util_h) VALUES (?, ?, ?, ?)", (nome_imp, watts_imp, preco_imp, vida_imp))
                     conn.commit()
+                    st.success("✅ Cadastrado com sucesso!")
+                    import time; time.sleep(1.5)
                     st.rerun()
                     
         elif acao_imp == "Editar":
             if not impressoras_df.empty:
                 imp_ed = st.selectbox("Selecione para Editar", impressoras_df['Modelo'].tolist(), key="sel_ed_imp")
                 row_imp = impressoras_df[impressoras_df['Modelo'] == imp_ed].iloc[0]
+                imp_id = int(row_imp['id'])
                 
                 with st.form("form_edita_imp"):
                     novo_nome = st.text_input("Modelo", value=row_imp['Modelo'])
@@ -214,20 +228,23 @@ if menu == "⚙️ Módulo 1: CADASTROS":
                     
                     if st.form_submit_button("Atualizar"):
                         conn.cursor().execute("UPDATE impressoras SET nome=?, watts=?, preco_maquina=?, vida_util_h=? WHERE id=?", 
-                                              (novo_nome, novo_watts, novo_preco, nova_vida, row_imp['id']))
+                                              (novo_nome, novo_watts, novo_preco, nova_vida, imp_id))
                         conn.commit()
+                        st.success("✅ Alterado com sucesso!")
+                        import time; time.sleep(1.5)
                         st.rerun()
                         
         elif acao_imp == "Excluir":
              if not impressoras_df.empty:
                 imp_del = st.selectbox("Selecione para Excluir", impressoras_df['Modelo'].tolist(), key="sel_del_imp")
-                imp_id = impressoras_df[impressoras_df['Modelo'] == imp_del]['id'].values[0]
+                imp_id = int(impressoras_df[impressoras_df['Modelo'] == imp_del]['id'].values[0])
                 if st.button("🚨 Confirmar Exclusão", key="btn_del_imp"):
                     conn.cursor().execute("DELETE FROM impressoras WHERE id=?", (imp_id,))
                     conn.commit()
+                    st.success("✅ Excluído com sucesso!")
+                    import time; time.sleep(1.5)
                     st.rerun()
         conn.close()
-
 
 # =====================================================================
 # MÓDULO 2: PROJETOS (Calculadora)
@@ -245,71 +262,86 @@ elif menu == "🧮 Módulo 2: PROJETOS":
     with col1:
         st.subheader("📋 Parâmetros da Peça")
         
-        # Puxa a peça do catálogo ou permite digitar o nome
-        opcoes_pecas = ["-- Digitar Nome Manualmente --"] + pecas_df['nome'].tolist()
+        # 1. Opção neutra como padrão para esconder o formulário inicialmente
+        opcoes_pecas = ["-- Selecione uma opção --", "-- Digitar Nome Manualmente --"] + pecas_df['nome'].tolist()
         selecao_peca = st.selectbox("Selecionar Peça do Catálogo", opcoes_pecas)
         
-        if selecao_peca == "-- Digitar Nome Manualmente --":
-            proj_name = st.text_input("Nome da Peça", value="Peça Personalizada")
-            foto_base = None
-        else:
-            proj_name = selecao_peca
-            # Recupera a primeira foto do catálogo para vincular ao orçamento
-            row_peca = pecas_df[pecas_df['nome'] == selecao_peca].iloc[0]
-            fotos_lista = json.loads(row_peca['fotos_b64'])
-            foto_base = fotos_lista[0] if len(fotos_lista) > 0 else None
-            if foto_base:
-                st.image(base64.b64decode(foto_base), width=150, caption="Foto do Catálogo Vinculada")
+    # 2. Só exibe o restante da tela SE uma opção válida for escolhida
+    if selecao_peca != "-- Selecione uma opção --":
+        with col1:
+            if selecao_peca == "-- Digitar Nome Manualmente --":
+                proj_name = st.text_input("Nome da Peça", placeholder="Ex: Vaso Geométrico")
+                foto_base = None
+            else:
+                proj_name = selecao_peca
+                # Recupera a primeira foto do catálogo para vincular ao orçamento
+                row_peca = pecas_df[pecas_df['nome'] == selecao_peca].iloc[0]
+                fotos_lista = json.loads(row_peca['fotos_b64'])
+                foto_base = fotos_lista[0] if len(fotos_lista) > 0 else None
+                if foto_base:
+                    st.image(base64.b64decode(foto_base), width=150, caption="Foto do Catálogo Vinculada")
 
-        qty = st.number_input("Quantidade de Peças", min_value=1, value=1)
-        printer_selected = st.selectbox("Tipo de impressora", impressoras_df['nome'].tolist())
-        printer_info = impressoras_df[impressoras_df['nome'] == printer_selected].iloc[0]
+            qty = st.number_input("Quantidade de Peças", min_value=1, value=1)
+            printer_selected = st.selectbox("Tipo de impressora", impressoras_df['nome'].tolist())
+            printer_info = impressoras_df[impressoras_df['nome'] == printer_selected].iloc[0]
 
-        mat_selected = st.selectbox("Tipo de filamento", materiais_df['nome'].tolist())
-        mat_info = materiais_df[materiais_df['nome'] == mat_selected].iloc[0]
-        mat_cost_per_kg = st.number_input("Custo do filamento (R$ por Kilo)", value=float(mat_info['preco_kg']))
+            mat_selected = st.selectbox("Tipo de filamento", materiais_df['nome'].tolist())
+            mat_info = materiais_df[materiais_df['nome'] == mat_selected].iloc[0]
+            mat_cost_per_kg = st.number_input("Custo do filamento (R$ por Kilo)", value=float(mat_info['preco_kg']))
 
-        col_w, col_t = st.columns(2)
-        with col_w: weight_g = st.number_input("Peso total da peça (g)", min_value=0.0, value=85.0)
-        with col_t:
-            hours = st.number_input("Tempo (h)", min_value=0, value=4)
-            mins = st.number_input("Tempo (min)", min_value=0, max_value=59, value=30)
+            col_w, col_t = st.columns(2)
+            # 3. Valores padrão zerados para evitar cálculos fantasmas
+            with col_w: weight_g = st.number_input("Peso total da peça (g)", min_value=0.0, value=0.0)
+            with col_t:
+                hours = st.number_input("Tempo (h)", min_value=0, value=0)
+                mins = st.number_input("Tempo (min)", min_value=0, max_value=59, value=0)
 
-        markup = st.slider("Margem de Lucro (%)", 20, 300, 100, step=10)
+            markup = st.slider("Margem de Lucro (%)", 20, 300, 100, step=10)
 
-    total_hours = hours + (mins / 60)
-    cost_mat = (weight_g / 1000) * mat_cost_per_kg
-    cost_energy = (printer_info['watts'] / 1000) * total_hours * kwh_cost
-    cost_depr = (printer_info['preco_maquina'] / max(1, printer_info['vida_util_h'])) * total_hours
-    
-    total_cost = cost_mat + cost_energy + cost_depr
-    final_price = total_cost * (1 + (markup / 100))
-    profit = final_price - total_cost
+        # Lógica de cálculo
+        total_hours = hours + (mins / 60)
+        cost_mat = (weight_g / 1000) * mat_cost_per_kg
+        cost_energy = (printer_info['watts'] / 1000) * total_hours * kwh_cost
+        cost_depr = (printer_info['preco_maquina'] / max(1, printer_info['vida_util_h'])) * total_hours
+        
+        total_cost = cost_mat + cost_energy + cost_depr
+        final_price = total_cost * (1 + (markup / 100))
+        profit = final_price - total_cost
 
-    # String de Memória de Cálculo
-    memoria_calc_str = f"Material: R${cost_mat:.2f} | Energia: R${cost_energy:.2f} | Depreciação: R${cost_depr:.2f} | Custo Total: R${total_cost:.2f} | Margem: {markup}%"
+        memoria_calc_str = f"Material: R${cost_mat:.2f} | Energia: R${cost_energy:.2f} | Depreciação: R${cost_depr:.2f} | Custo Total: R${total_cost:.2f} | Margem: {markup}%"
 
-    with col2:
-        st.subheader("📊 Resultado do Orçamento")
-        if weight_g > 0 and total_hours > 0:
-            st.metric(label="💰 PREÇO DE VENDA SUGERIDO", value=f"R$ {final_price:.2f}", delta=f"Lucro: R$ {profit:.2f}")
-            st.divider()
-            df_detalhes = pd.DataFrame({"Componente": ["Custo com Material", "Gasto com Energia", "Depreciação Máquina", "Lucro Limpo"], "Valor (R$)": [cost_mat, cost_energy, cost_depr, profit]})
-            st.dataframe(df_detalhes.style.format({"Valor (R$)": "R$ {:.2f}"}), use_container_width=True, hide_index=True)
+        with col2:
+            st.subheader("📊 Resultado do Orçamento")
+            
+            # 4. Só mostra o placar financeiro SE o peso e tempo forem maiores que zero
+            if proj_name and weight_g > 0 and total_hours > 0:
+                st.metric(label="💰 PREÇO DE VENDA SUGERIDO", value=f"R$ {final_price:.2f}", delta=f"Lucro: R$ {profit:.2f}")
+                st.divider()
+                df_detalhes = pd.DataFrame({"Componente": ["Custo com Material", "Gasto com Energia", "Depreciação Máquina", "Lucro Limpo"], "Valor (R$)": [cost_mat, cost_energy, cost_depr, profit]})
+                st.dataframe(df_detalhes.style.format({"Valor (R$)": "R$ {:.2f}"}), use_container_width=True, hide_index=True)
 
-            if st.button("💾 Salvar Projeto no Relatório", type="primary"):
-                cursor = conn.cursor()
-                data_hoje = datetime.now().strftime("%d/%m/%Y %H:%M")
-                cursor.execute("""
-                    INSERT INTO historico (nome_projeto, material, peso_g, tempo_h, custo_total, preco_venda, data, memoria_calculo, foto_principal) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (proj_name, mat_selected, weight_g, total_hours, total_cost, final_price, data_hoje, memoria_calc_str, foto_base))
-                conn.commit()
-                st.success("✅ Projeto salvo e enviado para o Módulo de Relatórios!")
-    
+                if st.button("💾 Salvar Projeto no Relatório", type="primary"):
+                    cursor = conn.cursor()
+                    data_hoje = datetime.now().strftime("%d/%m/%Y %H:%M")
+                    cursor.execute("""
+                        INSERT INTO historico (nome_projeto, material, peso_g, tempo_h, custo_total, preco_venda, data, memoria_calculo, foto_principal) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (proj_name, mat_selected, weight_g, total_hours, total_cost, final_price, data_hoje, memoria_calc_str, foto_base))
+                    conn.commit()
+                    st.success("✅ Projeto salvo e enviado para o Módulo de Relatórios!")
+                    import time; time.sleep(1.5) # O mesmo truque do delay visual aqui
+                    st.rerun()
+            elif proj_name == "":
+                st.warning("⚠️ Digite um nome para a peça antes de prosseguir.")
+            else:
+                st.info("👈 Preencha o peso (g) e o tempo da impressão para gerar o orçamento detalhado.")
+    else:
+        # Mensagem neutra quando a tela é aberta pela primeira vez
+        with col2:
+            st.info("👈 Selecione uma peça no menu ao lado para iniciar a configuração do projeto.")
+            
     conn.close()
-
-
+    
 # =====================================================================
 # MÓDULO 3: RELATÓRIO (Landscape Print & Memória de Cálculo)
 # =====================================================================
