@@ -17,14 +17,25 @@ def init_db():
     cursor.execute('''CREATE TABLE IF NOT EXISTS impressoras (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT UNIQUE, watts REAL, preco_maquina REAL, vida_util_h REAL)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS catalogo_pecas (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT UNIQUE, fotos_b64 TEXT)''')
     
-    # Módulo de Histórico/Relatório (Atualizado com Memória de Cálculo)
+    # Cria a tabela base se não existir
     cursor.execute('''CREATE TABLE IF NOT EXISTS historico (
         id INTEGER PRIMARY KEY AUTOINCREMENT, 
         nome_projeto TEXT, material TEXT, peso_g REAL, tempo_h REAL, 
-        custo_total REAL, preco_venda REAL, data TEXT, 
-        memoria_calculo TEXT, foto_principal TEXT
+        custo_total REAL, preco_venda REAL, data TEXT
     )''')
     
+    # --- SCRIPT DE MIGRAÇÃO (Atualiza bancos antigos automaticamente) ---
+    try:
+        cursor.execute("ALTER TABLE historico ADD COLUMN memoria_calculo TEXT")
+    except sqlite3.OperationalError:
+        pass # Ignora o erro se a coluna já existir
+
+    try:
+        cursor.execute("ALTER TABLE historico ADD COLUMN foto_principal TEXT")
+    except sqlite3.OperationalError:
+        pass # Ignora o erro se a coluna já existir
+    # -------------------------------------------------------------------
+
     # Dados padrão para evitar banco vazio
     cursor.execute("SELECT COUNT(*) FROM materiais")
     if cursor.fetchone()[0] == 0:
@@ -75,7 +86,6 @@ menu = st.sidebar.radio("Módulos do Sistema", [
     "📜 Módulo 3: RELATÓRIO"
 ])
 kwh_cost = st.sidebar.number_input("Custo da Energia Elétrica (R$ / kWh)", value=1.25, step=0.05)
-
 
 # =====================================================================
 # MÓDULO 1: CADASTROS
@@ -246,8 +256,10 @@ elif menu == "📜 Módulo 3: RELATÓRIO":
             c1, c2, c3 = st.columns([1, 2, 1])
             
             with c1:
-                if row['foto_principal']:
-                    st.image(base64.b64decode(row['foto_principal']), use_column_width=True)
+                # Usa o get() e checa se não é nulo/vazio para evitar quebrar com registros antigos
+                foto = row.get('foto_principal')
+                if pd.notna(foto) and foto:
+                    st.image(base64.b64decode(foto), use_column_width=True)
                 else:
                     st.info("Nenhuma foto atrelada.")
             
@@ -260,7 +272,11 @@ elif menu == "📜 Módulo 3: RELATÓRIO":
                 
             with c3:
                 st.markdown("**🧠 Memória de Cálculo:**")
-                st.caption(row['memoria_calculo'].replace(" | ", "<br>"))
+                memoria = row.get('memoria_calculo')
+                if pd.notna(memoria) and memoria:
+                    st.caption(memoria.replace(" | ", "<br>"))
+                else:
+                    st.caption("Memória de cálculo não disponível para registros legados.")
             
             st.divider()
             
