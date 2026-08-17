@@ -88,63 +88,145 @@ menu = st.sidebar.radio("Módulos do Sistema", [
 kwh_cost = st.sidebar.number_input("Custo da Energia Elétrica (R$ / kWh)", value=1.25, step=0.05)
 
 # =====================================================================
-# MÓDULO 1: CADASTROS
+# MÓDULO 1: CADASTROS (CRUD COMPLETO)
 # =====================================================================
 if menu == "⚙️ Módulo 1: CADASTROS":
     st.title("⚙️ Cadastros Base do Sistema")
     tab_pecas, tab_mat, tab_imp = st.tabs(["🧩 Peças e Produtos", "📦 Materiais", "🖨️ Impressoras"])
     
+    # --- CRUD: CATÁLOGO DE PEÇAS ---
     with tab_pecas:
-        st.markdown("### Cadastrar Nova Peça no Catálogo")
-        with st.form("form_peca", clear_on_submit=True):
-            nome_peca = st.text_input("Nome da Peça / Produto")
-            fotos_upload = st.file_uploader("Anexar Fotos da Peça (Pode selecionar várias)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
-            btn_peca = st.form_submit_button("Salvar Peça")
-            
-            if btn_peca and nome_peca:
-                fotos_b64 = [converter_imagem(f) for f in fotos_upload]
-                fotos_json = json.dumps(fotos_b64) # Salva a lista de fotos como texto no banco
-                
-                conn = get_db_connection()
-                try:
-                    conn.cursor().execute("INSERT INTO catalogo_pecas (nome, fotos_b64) VALUES (?, ?)", (nome_peca, fotos_json))
-                    conn.commit()
-                    st.success(f"Peça '{nome_peca}' cadastrada com fotos!")
-                except sqlite3.IntegrityError:
-                    st.error("Já existe uma peça com este nome.")
-                finally:
-                    conn.close()
-                    
-        st.divider()
-        st.markdown("#### Catálogo Atual")
         conn = get_db_connection()
-        cat_df = pd.read_sql("SELECT id, nome FROM catalogo_pecas", conn)
+        cat_df = pd.read_sql("SELECT id, nome as 'Nome' FROM catalogo_pecas", conn)
         st.dataframe(cat_df, use_container_width=True, hide_index=True)
+        
+        st.markdown("### 📝 Gerenciar Catálogo")
+        acao_peca = st.radio("Ação", ["Novo", "Editar Nome", "Excluir"], horizontal=True, key="rad_peca")
+        
+        if acao_peca == "Novo":
+            with st.form("form_peca", clear_on_submit=True):
+                nome_peca = st.text_input("Nome da Peça / Produto")
+                fotos_upload = st.file_uploader("Anexar Fotos", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+                if st.form_submit_button("Salvar Peça") and nome_peca:
+                    fotos_b64 = [converter_imagem(f) for f in fotos_upload]
+                    fotos_json = json.dumps(fotos_b64)
+                    try:
+                        conn.cursor().execute("INSERT INTO catalogo_pecas (nome, fotos_b64) VALUES (?, ?)", (nome_peca, fotos_json))
+                        conn.commit()
+                        st.success("✅ Cadastrado com sucesso!")
+                        st.rerun()
+                    except sqlite3.IntegrityError:
+                        st.error("Já existe uma peça com este nome.")
+                        
+        elif acao_peca == "Editar Nome":
+            if not cat_df.empty:
+                peca_ed = st.selectbox("Selecione a Peça", cat_df['Nome'].tolist(), key="sel_ed_peca")
+                peca_id = cat_df[cat_df['Nome'] == peca_ed]['id'].values[0]
+                with st.form("form_ed_peca"):
+                    novo_nome = st.text_input("Novo Nome", value=peca_ed)
+                    if st.form_submit_button("Atualizar"):
+                        conn.cursor().execute("UPDATE catalogo_pecas SET nome=? WHERE id=?", (novo_nome, peca_id))
+                        conn.commit()
+                        st.rerun()
+                        
+        elif acao_peca == "Excluir":
+            if not cat_df.empty:
+                peca_del = st.selectbox("Selecione a Peça", cat_df['Nome'].tolist(), key="sel_del_peca")
+                peca_id = cat_df[cat_df['Nome'] == peca_del]['id'].values[0]
+                if st.button("🚨 Confirmar Exclusão"):
+                    conn.cursor().execute("DELETE FROM catalogo_pecas WHERE id=?", (peca_id,))
+                    conn.commit()
+                    st.rerun()
         conn.close()
 
+    # --- CRUD: MATERIAIS ---
     with tab_mat:
         conn = get_db_connection()
-        st.dataframe(pd.read_sql("SELECT id, nome as 'Nome', preco_kg as 'Preço/KG (R$)' FROM materiais", conn), hide_index=True)
-        with st.form("form_material"):
-            nome_mat = st.text_input("Nome do Material (Fornecedor / Tipo)")
-            preco_mat = st.number_input("Custo Unitário (R$/KG)", min_value=0.0, value=130.0)
-            if st.form_submit_button("Salvar Material") and nome_mat:
-                conn.cursor().execute("INSERT INTO materiais (nome, preco_kg) VALUES (?, ?) ON CONFLICT(nome) DO UPDATE SET preco_kg=excluded.preco_kg", (nome_mat, preco_mat))
-                conn.commit()
-                st.rerun()
+        materiais_df = pd.read_sql("SELECT id, nome as 'Nome', preco_kg as 'Preço/KG (R$)' FROM materiais", conn)
+        st.dataframe(materiais_df, use_container_width=True, hide_index=True)
 
+        st.markdown("### 📝 Gerenciar Materiais")
+        acao_mat = st.radio("Ação", ["Novo", "Editar", "Excluir"], horizontal=True, key="rad_mat")
+        
+        if acao_mat == "Novo":
+            with st.form("form_novo_mat", clear_on_submit=True):
+                nome_mat = st.text_input("Nome do Material")
+                preco_mat = st.number_input("Custo Unitário (R$/KG)", min_value=0.0, value=130.0)
+                if st.form_submit_button("Salvar") and nome_mat:
+                    conn.cursor().execute("INSERT INTO materiais (nome, preco_kg) VALUES (?, ?)", (nome_mat, preco_mat))
+                    conn.commit()
+                    st.rerun()
+                    
+        elif acao_mat == "Editar":
+            if not materiais_df.empty:
+                mat_ed = st.selectbox("Selecione para Editar", materiais_df['Nome'].tolist(), key="sel_ed_mat")
+                mat_id = materiais_df[materiais_df['Nome'] == mat_ed]['id'].values[0]
+                mat_preco_atual = materiais_df[materiais_df['Nome'] == mat_ed]['Preço/KG (R$)'].values[0]
+                
+                with st.form("form_edita_mat"):
+                    novo_nome = st.text_input("Nome", value=mat_ed)
+                    novo_preco = st.number_input("Preço/KG", value=mat_preco_atual)
+                    if st.form_submit_button("Atualizar"):
+                        conn.cursor().execute("UPDATE materiais SET nome=?, preco_kg=? WHERE id=?", (novo_nome, novo_preco, mat_id))
+                        conn.commit()
+                        st.rerun()
+                        
+        elif acao_mat == "Excluir":
+             if not materiais_df.empty:
+                mat_del = st.selectbox("Selecione para Excluir", materiais_df['Nome'].tolist(), key="sel_del_mat")
+                mat_id = materiais_df[materiais_df['Nome'] == mat_del]['id'].values[0]
+                if st.button("🚨 Confirmar Exclusão", key="btn_del_mat"):
+                    conn.cursor().execute("DELETE FROM materiais WHERE id=?", (mat_id,))
+                    conn.commit()
+                    st.rerun()
+        conn.close()
+
+    # --- CRUD: IMPRESSORAS ---
     with tab_imp:
         conn = get_db_connection()
-        st.dataframe(pd.read_sql("SELECT id, nome as 'Modelo', watts as 'Consumo (W)', preco_maquina as 'Valor (R$)', vida_util_h as 'Vida Útil (h)' FROM impressoras", conn), hide_index=True)
-        with st.form("form_impressora"):
-            nome_imp = st.text_input("Marca | Modelo da Impressora")
-            watts_imp = st.number_input("Consumo (em W)", value=350)
-            preco_imp = st.number_input("Custo do Equipamento (R$)", value=4500.0)
-            vida_imp = st.number_input("Vida Útil Estimada (em horas)", value=5000)
-            if st.form_submit_button("Salvar Máquina") and nome_imp:
-                conn.cursor().execute("INSERT INTO impressoras (nome, watts, preco_maquina, vida_util_h) VALUES (?, ?, ?, ?) ON CONFLICT(nome) DO UPDATE SET watts=excluded.watts, preco_maquina=excluded.preco_maquina, vida_util_h=excluded.vida_util_h", (nome_imp, watts_imp, preco_imp, vida_imp))
-                conn.commit()
-                st.rerun()
+        impressoras_df = pd.read_sql("SELECT id, nome as 'Modelo', watts as 'Consumo (W)', preco_maquina as 'Valor (R$)', vida_util_h as 'Vida Útil (h)' FROM impressoras", conn)
+        st.dataframe(impressoras_df, use_container_width=True, hide_index=True)
+
+        st.markdown("### 📝 Gerenciar Impressoras")
+        acao_imp = st.radio("Ação", ["Nova", "Editar", "Excluir"], horizontal=True, key="rad_imp")
+        
+        if acao_imp == "Nova":
+            with st.form("form_nova_imp", clear_on_submit=True):
+                nome_imp = st.text_input("Marca | Modelo da Impressora")
+                watts_imp = st.number_input("Consumo (em W)", value=350)
+                preco_imp = st.number_input("Custo do Equipamento (R$)", value=4500.0)
+                vida_imp = st.number_input("Vida Útil Estimada (h)", value=5000)
+                if st.form_submit_button("Salvar Máquina") and nome_imp:
+                    conn.cursor().execute("INSERT INTO impressoras (nome, watts, preco_maquina, vida_util_h) VALUES (?, ?, ?, ?)", (nome_imp, watts_imp, preco_imp, vida_imp))
+                    conn.commit()
+                    st.rerun()
+                    
+        elif acao_imp == "Editar":
+            if not impressoras_df.empty:
+                imp_ed = st.selectbox("Selecione para Editar", impressoras_df['Modelo'].tolist(), key="sel_ed_imp")
+                row_imp = impressoras_df[impressoras_df['Modelo'] == imp_ed].iloc[0]
+                
+                with st.form("form_edita_imp"):
+                    novo_nome = st.text_input("Modelo", value=row_imp['Modelo'])
+                    novo_watts = st.number_input("Consumo (W)", value=float(row_imp['Consumo (W)']))
+                    novo_preco = st.number_input("Valor (R$)", value=float(row_imp['Valor (R$)']))
+                    nova_vida = st.number_input("Vida Útil (h)", value=float(row_imp['Vida Útil (h)']))
+                    
+                    if st.form_submit_button("Atualizar"):
+                        conn.cursor().execute("UPDATE impressoras SET nome=?, watts=?, preco_maquina=?, vida_util_h=? WHERE id=?", 
+                                              (novo_nome, novo_watts, novo_preco, nova_vida, row_imp['id']))
+                        conn.commit()
+                        st.rerun()
+                        
+        elif acao_imp == "Excluir":
+             if not impressoras_df.empty:
+                imp_del = st.selectbox("Selecione para Excluir", impressoras_df['Modelo'].tolist(), key="sel_del_imp")
+                imp_id = impressoras_df[impressoras_df['Modelo'] == imp_del]['id'].values[0]
+                if st.button("🚨 Confirmar Exclusão", key="btn_del_imp"):
+                    conn.cursor().execute("DELETE FROM impressoras WHERE id=?", (imp_id,))
+                    conn.commit()
+                    st.rerun()
+        conn.close()
 
 
 # =====================================================================
@@ -277,6 +359,15 @@ elif menu == "📜 Módulo 3: RELATÓRIO":
                     st.caption(memoria.replace(" | ", "<br>"))
                 else:
                     st.caption("Memória de cálculo não disponível para registros legados.")
+                
+                # --- BOTÃO DE EXCLUIR PROJETO ESPECÍFICO ---
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("🗑️ Excluir Este Projeto", key=f"del_proj_{row['id']}", use_container_width=True):
+                    conn = get_db_connection()
+                    conn.cursor().execute("DELETE FROM historico WHERE id=?", (row['id'],))
+                    conn.commit()
+                    conn.close()
+                    st.rerun()
             
             st.divider()
             
