@@ -2,6 +2,8 @@ import sqlite3
 import pandas as pd
 from datetime import datetime
 import streamlit as st
+import base64
+import json
 
 # --- 1. CONFIGURAÇÃO E BANCO DE DADOS (SQLite) ---
 DB_NAME = "3d_calc_pro.db"
@@ -10,21 +12,28 @@ def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
+    # Módulo de Cadastros
     cursor.execute('''CREATE TABLE IF NOT EXISTS materiais (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT UNIQUE, preco_kg REAL)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS impressoras (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT UNIQUE, watts REAL, preco_maquina REAL, vida_util_h REAL)''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS historico (id INTEGER PRIMARY KEY AUTOINCREMENT, nome_projeto TEXT, material TEXT, peso_g REAL, tempo_h REAL, custo_total REAL, preco_venda REAL, data TEXT)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS catalogo_pecas (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT UNIQUE, fotos_b64 TEXT)''')
     
+    # Módulo de Histórico/Relatório (Atualizado com Memória de Cálculo)
+    cursor.execute('''CREATE TABLE IF NOT EXISTS historico (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, 
+        nome_projeto TEXT, material TEXT, peso_g REAL, tempo_h REAL, 
+        custo_total REAL, preco_venda REAL, data TEXT, 
+        memoria_calculo TEXT, foto_principal TEXT
+    )''')
+    
+    # Dados padrão para evitar banco vazio
     cursor.execute("SELECT COUNT(*) FROM materiais")
     if cursor.fetchone()[0] == 0:
-        cursor.executemany("INSERT INTO materiais (nome, preco_kg) VALUES (?, ?)", [("PLA", 99.0), ("PLA Premium HT", 103.41), ("PETG", 119.0)])
+        cursor.executemany("INSERT INTO materiais (nome, preco_kg) VALUES (?, ?)", [("PLA", 99.0), ("PETG", 119.0)])
         
     cursor.execute("SELECT COUNT(*) FROM impressoras")
     if cursor.fetchone()[0] == 0:
         cursor.executemany("INSERT INTO impressoras (nome, watts, preco_maquina, vida_util_h) VALUES (?, ?, ?, ?)", [
-            ("Ender 3 / V2", 130.0, 1800.0, 4000.0), 
-            ("Bambu Lab A1 + AMS Lite", 150.0, 4200.0, 5000.0), 
-            ("Bambu X1C", 350.0, 11000.0, 6000.0), 
-            ("Impressora Resina", 60.0, 2500.0, 3000.0)
+            ("Ender 3", 130.0, 1800.0, 4000.0), ("Bambu Lab A1 + AMS Lite", 150.0, 4200.0, 5000.0)
         ])
         
     conn.commit()
@@ -35,50 +44,146 @@ init_db()
 def get_db_connection():
     return sqlite3.connect(DB_NAME)
 
-# --- 2. CONFIGURAÇÃO DA PÁGINA STREAMLIT ---
+def converter_imagem(upload):
+    if upload is not None:
+        return base64.b64encode(upload.read()).decode()
+    return None
+
+# --- 2. ESTILOS DE IMPRESSÃO (LANDSCAPE & CLEAN) ---
 st.set_page_config(page_title="3D Calc Pro", page_icon="🎲", layout="wide")
 
+st.markdown("""
+    <style>
+    @media print {
+        @page { size: landscape; margin: 15mm; }
+        section[data-testid="stSidebar"] { display: none !important; }
+        header[data-testid="stHeader"] { display: none !important; }
+        .stButton, .stDownloadButton, .stFileUploader, .stSelectbox { display: none !important; }
+        footer { display: none !important; }
+        .print-container { width: 100%; border: 1px solid #ccc; padding: 20px; border-radius: 8px; page-break-inside: avoid; margin-bottom: 20px; }
+        .print-header { font-size: 24px; font-weight: bold; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 15px; }
+        body { background-color: white !important; color: black !important; }
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- 3. NAVEGAÇÃO DOS MÓDULOS ---
 st.sidebar.title("🎲 3D Calc Pro")
-menu = st.sidebar.radio("Navegação", [
-    "🧮 Calculadora de Orçamentos", 
-    "🧩 Fatiamento Otimizado",
-    "⚙️ Gerenciar Materiais & Máquinas", 
-    "📜 Histórico de Projetos"
+menu = st.sidebar.radio("Módulos do Sistema", [
+    "⚙️ Módulo 1: CADASTROS", 
+    "🧮 Módulo 2: PROJETOS", 
+    "📜 Módulo 3: RELATÓRIO"
 ])
 kwh_cost = st.sidebar.number_input("Custo da Energia Elétrica (R$ / kWh)", value=1.25, step=0.05)
 
 
-# --- TELA 1: CALCULADORA DE ORÇAMENTOS ---
-if menu == "🧮 Calculadora de Orçamentos":
-    st.title("🧮 Calculadora de Precificação 3D")
+# =====================================================================
+# MÓDULO 1: CADASTROS
+# =====================================================================
+if menu == "⚙️ Módulo 1: CADASTROS":
+    st.title("⚙️ Cadastros Base do Sistema")
+    tab_pecas, tab_mat, tab_imp = st.tabs(["🧩 Peças e Produtos", "📦 Materiais", "🖨️ Impressoras"])
+    
+    with tab_pecas:
+        st.markdown("### Cadastrar Nova Peça no Catálogo")
+        with st.form("form_peca", clear_on_submit=True):
+            nome_peca = st.text_input("Nome da Peça / Produto")
+            fotos_upload = st.file_uploader("Anexar Fotos da Peça (Pode selecionar várias)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+            btn_peca = st.form_submit_button("Salvar Peça")
+            
+            if btn_peca and nome_peca:
+                fotos_b64 = [converter_imagem(f) for f in fotos_upload]
+                fotos_json = json.dumps(fotos_b64) # Salva a lista de fotos como texto no banco
+                
+                conn = get_db_connection()
+                try:
+                    conn.cursor().execute("INSERT INTO catalogo_pecas (nome, fotos_b64) VALUES (?, ?)", (nome_peca, fotos_json))
+                    conn.commit()
+                    st.success(f"Peça '{nome_peca}' cadastrada com fotos!")
+                except sqlite3.IntegrityError:
+                    st.error("Já existe uma peça com este nome.")
+                finally:
+                    conn.close()
+                    
+        st.divider()
+        st.markdown("#### Catálogo Atual")
+        conn = get_db_connection()
+        cat_df = pd.read_sql("SELECT id, nome FROM catalogo_pecas", conn)
+        st.dataframe(cat_df, use_container_width=True, hide_index=True)
+        conn.close()
+
+    with tab_mat:
+        conn = get_db_connection()
+        st.dataframe(pd.read_sql("SELECT id, nome as 'Nome', preco_kg as 'Preço/KG (R$)' FROM materiais", conn), hide_index=True)
+        with st.form("form_material"):
+            nome_mat = st.text_input("Nome do Material (Fornecedor / Tipo)")
+            preco_mat = st.number_input("Custo Unitário (R$/KG)", min_value=0.0, value=130.0)
+            if st.form_submit_button("Salvar Material") and nome_mat:
+                conn.cursor().execute("INSERT INTO materiais (nome, preco_kg) VALUES (?, ?) ON CONFLICT(nome) DO UPDATE SET preco_kg=excluded.preco_kg", (nome_mat, preco_mat))
+                conn.commit()
+                st.rerun()
+
+    with tab_imp:
+        conn = get_db_connection()
+        st.dataframe(pd.read_sql("SELECT id, nome as 'Modelo', watts as 'Consumo (W)', preco_maquina as 'Valor (R$)', vida_util_h as 'Vida Útil (h)' FROM impressoras", conn), hide_index=True)
+        with st.form("form_impressora"):
+            nome_imp = st.text_input("Marca | Modelo da Impressora")
+            watts_imp = st.number_input("Consumo (em W)", value=350)
+            preco_imp = st.number_input("Custo do Equipamento (R$)", value=4500.0)
+            vida_imp = st.number_input("Vida Útil Estimada (em horas)", value=5000)
+            if st.form_submit_button("Salvar Máquina") and nome_imp:
+                conn.cursor().execute("INSERT INTO impressoras (nome, watts, preco_maquina, vida_util_h) VALUES (?, ?, ?, ?) ON CONFLICT(nome) DO UPDATE SET watts=excluded.watts, preco_maquina=excluded.preco_maquina, vida_util_h=excluded.vida_util_h", (nome_imp, watts_imp, preco_imp, vida_imp))
+                conn.commit()
+                st.rerun()
+
+
+# =====================================================================
+# MÓDULO 2: PROJETOS (Calculadora)
+# =====================================================================
+elif menu == "🧮 Módulo 2: PROJETOS":
+    st.title("🧮 Definição e Cálculo de Projeto")
     
     conn = get_db_connection()
     materiais_df = pd.read_sql("SELECT * FROM materiais", conn)
     impressoras_df = pd.read_sql("SELECT * FROM impressoras", conn)
-    conn.close()
-
+    pecas_df = pd.read_sql("SELECT * FROM catalogo_pecas", conn)
+    
     col1, col2 = st.columns([1, 1], gap="large")
 
     with col1:
-        st.subheader("📋 Dados do Projeto")
-        proj_name = st.text_input("Nome do Projeto", value="Vaso Geométrico")
-        qty = st.number_input("Quantidade de Peças", min_value=1, value=1)
+        st.subheader("📋 Parâmetros da Peça")
+        
+        # Puxa a peça do catálogo ou permite digitar o nome
+        opcoes_pecas = ["-- Digitar Nome Manualmente --"] + pecas_df['nome'].tolist()
+        selecao_peca = st.selectbox("Selecionar Peça do Catálogo", opcoes_pecas)
+        
+        if selecao_peca == "-- Digitar Nome Manualmente --":
+            proj_name = st.text_input("Nome da Peça", value="Peça Personalizada")
+            foto_base = None
+        else:
+            proj_name = selecao_peca
+            # Recupera a primeira foto do catálogo para vincular ao orçamento
+            row_peca = pecas_df[pecas_df['nome'] == selecao_peca].iloc[0]
+            fotos_lista = json.loads(row_peca['fotos_b64'])
+            foto_base = fotos_lista[0] if len(fotos_lista) > 0 else None
+            if foto_base:
+                st.image(base64.b64decode(foto_base), width=150, caption="Foto do Catálogo Vinculada")
 
-        printer_selected = st.selectbox("Selecione a Impressora", impressoras_df['nome'].tolist())
+        qty = st.number_input("Quantidade de Peças", min_value=1, value=1)
+        printer_selected = st.selectbox("Tipo de impressora", impressoras_df['nome'].tolist())
         printer_info = impressoras_df[impressoras_df['nome'] == printer_selected].iloc[0]
 
-        mat_selected = st.selectbox("Selecione o Material", materiais_df['nome'].tolist())
+        mat_selected = st.selectbox("Tipo de filamento", materiais_df['nome'].tolist())
         mat_info = materiais_df[materiais_df['nome'] == mat_selected].iloc[0]
-        
-        mat_cost_per_kg = st.number_input("Custo por KG do Material (R$)", value=float(mat_info['preco_kg']))
+        mat_cost_per_kg = st.number_input("Custo do filamento (R$ por Kilo)", value=float(mat_info['preco_kg']))
 
         col_w, col_t = st.columns(2)
-        with col_w: weight_g = st.number_input("Peso Total (gramas)", min_value=0.0, value=85.0, step=5.0)
+        with col_w: weight_g = st.number_input("Peso total da peça (g)", min_value=0.0, value=85.0)
         with col_t:
-            hours = st.number_input("Tempo (Horas)", min_value=0, value=4)
-            mins = st.number_input("Tempo (Minutos)", min_value=0, max_value=59, value=30)
+            hours = st.number_input("Tempo (h)", min_value=0, value=4)
+            mins = st.number_input("Tempo (min)", min_value=0, max_value=59, value=30)
 
-        markup = st.slider("Margem de Lucro / Markup (%)", 20, 300, 100, step=10)
+        markup = st.slider("Margem de Lucro (%)", 20, 300, 100, step=10)
 
     total_hours = hours + (mins / 60)
     cost_mat = (weight_g / 1000) * mat_cost_per_kg
@@ -89,182 +194,81 @@ if menu == "🧮 Calculadora de Orçamentos":
     final_price = total_cost * (1 + (markup / 100))
     profit = final_price - total_cost
 
+    # String de Memória de Cálculo
+    memoria_calc_str = f"Material: R${cost_mat:.2f} | Energia: R${cost_energy:.2f} | Depreciação: R${cost_depr:.2f} | Custo Total: R${total_cost:.2f} | Margem: {markup}%"
+
     with col2:
-        st.subheader("📊 Demonstrativo de Preço")
+        st.subheader("📊 Resultado do Orçamento")
         if weight_g > 0 and total_hours > 0:
             st.metric(label="💰 PREÇO DE VENDA SUGERIDO", value=f"R$ {final_price:.2f}", delta=f"Lucro: R$ {profit:.2f}")
             st.divider()
-            df_detalhes = pd.DataFrame({"Componente": ["Material", "Energia", "Depreciação Máquina", "Lucro Limpo"], "Valor (R$)": [cost_mat, cost_energy, cost_depr, profit]})
+            df_detalhes = pd.DataFrame({"Componente": ["Custo com Material", "Gasto com Energia", "Depreciação Máquina", "Lucro Limpo"], "Valor (R$)": [cost_mat, cost_energy, cost_depr, profit]})
             st.dataframe(df_detalhes.style.format({"Valor (R$)": "R$ {:.2f}"}), use_container_width=True, hide_index=True)
 
-            if st.button("💾 Salvar Orçamento", type="primary"):
-                conn = get_db_connection()
-                conn.cursor().execute("INSERT INTO historico (nome_projeto, material, peso_g, tempo_h, custo_total, preco_venda, data) VALUES (?, ?, ?, ?, ?, ?, ?)", 
-                                      (proj_name, mat_selected, weight_g, total_hours, total_cost, final_price, datetime.now().strftime("%d/%m/%Y %H:%M")))
+            if st.button("💾 Salvar Projeto no Relatório", type="primary"):
+                cursor = conn.cursor()
+                data_hoje = datetime.now().strftime("%d/%m/%Y %H:%M")
+                cursor.execute("""
+                    INSERT INTO historico (nome_projeto, material, peso_g, tempo_h, custo_total, preco_venda, data, memoria_calculo, foto_principal) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (proj_name, mat_selected, weight_g, total_hours, total_cost, final_price, data_hoje, memoria_calc_str, foto_base))
                 conn.commit()
-                conn.close()
-                st.success("✅ Salvo no banco de dados!")
-
-
-# --- TELA 2: FATIAMENTO OTIMIZADO ---
-elif menu == "🧩 Fatiamento Otimizado":
-    st.title("🧩 Assistente de Fatiamento Otimizado")
-    st.caption("Recomendações técnicas para fatiadores (Bambu Studio, OrcaSlicer, PrusaSlicer, Cura) com base na aplicação do projeto.")
-
-    col_in, col_out = st.columns([1, 1], gap="large")
-
-    with col_in:
-        st.subheader("🎯 Requisitos do Projeto")
-        
-        categoria = st.selectbox(
-            "Tipo de Aplicação",
-            [
-                "Decorativo / Visual (Sem esforço mecânico)",
-                "Funcional Leve (Suporte de celular, caixas organizadoras)",
-                "Estrutural Médio / Pesado (Suporte de Notebook, suporte de parede)",
-                "Peça Mecânica / Alto Impacto (Engrenagens, presilhas sob tensão)",
-                "Alta Exposição ao Calor / Ambiente Externo"
-            ]
-        )
-
-        bico = st.selectbox("Diâmetro do Bico (Nozzle)", [0.2, 0.4, 0.6, 0.8], index=1)
-        
-        esforco = st.select_slider(
-            "Carga de Peso / Esforço Mecânico Estimado",
-            options=["Nenhum (< 200g)", "Leve (< 1 kg)", "Médio (1 kg a 3 kg)", "Pesado (> 3 kg)"]
-        )
-
-    # Matriz de Regras de Fatiamento
-    if "Decorativo" in categoria:
-        paredes = 2
-        infill = 10
-        padrao = "Lightning / Grid"
-        topo_base = "3 Topo / 3 Base"
-        gerador = "Arachne"
-        mat_rec = "PLA"
-        dica = "Foco em acabamento estético e economia de filamento. Não recomendado para suportar peso."
-    elif "Leve" in categoria and esforco != "Pesado (> 3 kg)":
-        paredes = 3
-        infill = 15
-        padrao = "Gyroid / Cubic"
-        topo_base = "4 Topo / 3 Base"
-        gerador = "Arachne"
-        mat_rec = "PLA ou PETG"
-        dica = "Resistência adequada para uso cotidiano simples, como apoios leves."
-    elif "Estrutural Médio" in categoria or esforco in ["Médio (1 kg a 3 kg)", "Pesado (> 3 kg)"]:
-        paredes = 4
-        infill = 25
-        padrao = "Gyroid"
-        topo_base = "5 Topo / 4 Base"
-        gerador = "Arachne"
-        mat_rec = "PLA Reforçado ou PETG"
-        dica = "Configuração ideal para notebooks pesados (ex: Acer Nitro 5). As 4 paredes absorvem a flexão sem trincar."
-    elif "Mecânica" in categoria:
-        paredes = 5
-        infill = 40
-        padrao = "3D Honeycomb / Gyroid"
-        topo_base = "5 Topo / 5 Base"
-        gerador = "Clássico"
-        mat_rec = "PETG / ABS / ASA"
-        dica = "Máxima coesão de camadas para resistir à torção, atrito e impactos repetidos."
-    else:
-        paredes = 4
-        infill = 30
-        padrao = "Gyroid"
-        topo_base = "5 Topo / 4 Base"
-        gerador = "Arachne"
-        mat_rec = "PETG / ASA / ABS"
-        dica = "Atenção: O PLA amolece acima de 50°C. Para contato direto com saídas de ar quente ou sol, use PETG ou ASA."
-
-    with col_out:
-        st.subheader("⚙️ Parâmetros Recomendados para o Slicer")
-        
-        st.info(f"💡 **Diretriz de Impressão:** {dica}")
-
-        m1, m2 = st.columns(2)
-        m1.metric("Paredes (Wall Loops)", f"{paredes} voltas")
-        m2.metric("Preenchimento (Infill)", f"{infill}%")
-
-        m3, m4 = st.columns(2)
-        m3.metric("Padrão de Infill", padrao)
-        m4.metric("Camadas Topo / Base", topo_base)
-
-        st.divider()
-        
-        df_resumo = pd.DataFrame({
-            "Parâmetro Avançado": ["Gerador de Parede", "Material Indicado", "Bico Selecionado"],
-            "Configuração Recomendada": [gerador, mat_rec, f"{bico} mm"]
-        })
-        st.dataframe(df_resumo, use_container_width=True, hide_index=True)
-
-
-# --- TELA 3: GERENCIAR MATERIAIS & MÁQUINAS ---
-elif menu == "⚙️ Gerenciar Materiais & Máquinas":
-    st.title("⚙️ Gerenciamento de Preços e Maquinário")
-    tab_mat, tab_imp = st.tabs(["📦 Materiais Cadastrados", "🖨️ Impressoras Cadastradas"])
+                st.success("✅ Projeto salvo e enviado para o Módulo de Relatórios!")
     
-    with tab_mat:
-        conn = get_db_connection()
-        materiais_df = pd.read_sql("SELECT id, nome as 'Nome', preco_kg as 'Preço/KG (R$)' FROM materiais", conn)
-        st.dataframe(materiais_df, use_container_width=True, hide_index=True)
-
-        st.markdown("### Cadastrar / Atualizar Material")
-        with st.form("form_material"):
-            nome_mat = st.text_input("Nome do Material (ex: PLA Silk Gold)")
-            preco_mat = st.number_input("Preço do KG (R$)", min_value=0.0, value=130.0)
-            btn_mat = st.form_submit_button("Salvar no Banco")
-
-            if btn_mat and nome_mat:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO materiais (nome, preco_kg) VALUES (?, ?)
-                    ON CONFLICT(nome) DO UPDATE SET preco_kg=excluded.preco_kg
-                """, (nome_mat, preco_mat))
-                conn.commit()
-                conn.close()
-                st.success(f"Material '{nome_mat}' salvo!")
-                st.rerun()
-
-    with tab_imp:
-        conn = get_db_connection()
-        impressoras_df = pd.read_sql("SELECT id, nome as 'Modelo', watts as 'Consumo (W)', preco_maquina as 'Valor (R$)', vida_util_h as 'Vida Útil (h)' FROM impressoras", conn)
-        st.dataframe(impressoras_df, use_container_width=True, hide_index=True)
-
-        st.markdown("### Cadastrar / Atualizar Impressora")
-        with st.form("form_impressora"):
-            nome_imp = st.text_input("Modelo da Impressora")
-            watts_imp = st.number_input("Consumo em Watts", value=350)
-            preco_imp = st.number_input("Valor de Compra (R$)", value=4500.0)
-            vida_imp = st.number_input("Vida Útil Estimada em Horas", value=5000)
-            btn_imp = st.form_submit_button("Salvar no Banco")
-
-            if btn_imp and nome_imp:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO impressoras (nome, watts, preco_maquina, vida_util_h) VALUES (?, ?, ?, ?)
-                    ON CONFLICT(nome) DO UPDATE SET watts=excluded.watts, preco_maquina=excluded.preco_maquina, vida_util_h=excluded.vida_util_h
-                """, (nome_imp, watts_imp, preco_imp, vida_imp))
-                conn.commit()
-                conn.close()
-                st.success(f"Impressora '{nome_imp}' salva!")
-                st.rerun()
+    conn.close()
 
 
-# --- TELA 4: HISTÓRICO DE PROJETOS ---
-elif menu == "📜 Histórico de Projetos":
-    st.title("📜 Histórico de Orçamentos")
+# =====================================================================
+# MÓDULO 3: RELATÓRIO (Landscape Print & Memória de Cálculo)
+# =====================================================================
+elif menu == "📜 Módulo 3: RELATÓRIO":
+    st.title("📜 Relação de Projetos Salvos")
+    
+    st.markdown("""
+        <button onclick="window.print()" style="background-color: #000; color: white; padding: 10px 24px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-bottom: 20px;">
+            🖨️ IMPRIMIR RELATÓRIO (LANDSCAPE)
+        </button>
+    """, unsafe_allow_html=True)
+    
     conn = get_db_connection()
-    df_hist = pd.read_sql("SELECT id, nome_projeto as 'Projeto', material as 'Material', peso_g as 'Peso (g)', tempo_h as 'Tempo (h)', custo_total as 'Custo (R$)', preco_venda as 'Venda (R$)', data as 'Data' FROM historico ORDER BY id DESC", conn)
+    df_hist = pd.read_sql("SELECT * FROM historico ORDER BY id DESC", conn)
     conn.close()
 
     if not df_hist.empty:
-        st.dataframe(df_hist, use_container_width=True, hide_index=True)
-        if st.button("🗑️ Limpar Todo o Histórico"):
+        for idx, row in df_hist.iterrows():
+            # Estrutura HTML/CSS que será formatada para impressão limpa
+            st.markdown(f"""
+            <div class="print-container">
+                <div class="print-header">Projeto: {row['nome_projeto']} <span style="float:right; font-size:16px; color:gray;">Data: {row['data']}</span></div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            c1, c2, c3 = st.columns([1, 2, 1])
+            
+            with c1:
+                if row['foto_principal']:
+                    st.image(base64.b64decode(row['foto_principal']), use_column_width=True)
+                else:
+                    st.info("Nenhuma foto atrelada.")
+            
+            with c2:
+                st.markdown(f"**Material:** {row['material']}")
+                st.markdown(f"**Peso Total:** {row['peso_g']} g")
+                st.markdown(f"**Tempo Estimado:** {row['tempo_h']:.2f} horas")
+                st.markdown(f"**Custo de Confecção:** R$ {row['custo_total']:.2f}")
+                st.markdown(f"**Preço de Venda Sugerido:** R$ {row['preco_venda']:.2f}")
+                
+            with c3:
+                st.markdown("**🧠 Memória de Cálculo:**")
+                st.caption(row['memoria_calculo'].replace(" | ", "<br>"))
+            
+            st.divider()
+            
+        if st.button("🗑️ Limpar Relatório"):
             conn = get_db_connection()
             conn.cursor().execute("DELETE FROM historico")
             conn.commit()
             conn.close()
-            st.success("Histórico limpo!")
             st.rerun()
     else:
-        st.info("Nenhum orçamento salvo no banco de dados ainda.")
+        st.info("Nenhum projeto salvo no banco de dados ainda.")
