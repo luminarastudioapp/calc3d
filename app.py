@@ -13,19 +13,19 @@ def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
-    # --- RENAME MATERIAIS PARA FILAMENTOS (Migração segura) ---
+    # --- RENAME MATERIAIS PARA FILAMENTOS ---
     try:
         cursor.execute("ALTER TABLE materiais RENAME TO filamentos")
     except sqlite3.OperationalError:
-        pass # Se já foi renomeada ou não existe, segue em frente
+        pass
 
     # --- TABELAS BASE ---
     cursor.execute('''CREATE TABLE IF NOT EXISTS filamentos (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT UNIQUE, preco_kg REAL)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS impressoras (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT UNIQUE, watts REAL, preco_maquina REAL, vida_util_h REAL)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS configuracoes (id INTEGER PRIMARY KEY, kwh REAL, mao_obra REAL)''')
     
-    # --- NOVAS TABELAS: CATEGORIAS E OUTROS INSUMOS ---
-    cursor.execute('''CREATE TABLE IF NOT EXISTS categorias (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT UNIQUE, tipo_categoria TEXT)''')
+    # --- TABELAS DE CATEGORIAS E OUTROS ---
+    cursor.execute('''CREATE TABLE IF NOT EXISTS categorias (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT UNIQUE, tipo_categoria TEXT, descricao TEXT)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS outros (id INTEGER PRIMARY KEY AUTOINCREMENT, categoria TEXT, nome TEXT, marca TEXT, valor_unit REAL, especificacoes TEXT)''')
 
     cursor.execute('''CREATE TABLE IF NOT EXISTS historico (
@@ -34,7 +34,7 @@ def init_db():
         custo_total REAL, preco_venda REAL, data TEXT
     )''')
     
-    # --- SCRIPT DE MIGRAÇÃO (Colunas do Histórico) ---
+    # --- SCRIPT DE MIGRAÇÃO ---
     colunas_novas = [
         ("memoria_calculo", "TEXT"), ("foto_principal", "TEXT"), 
         ("origem", "TEXT"), ("link_projeto", "TEXT"), ("custo_mao_obra", "REAL"),
@@ -47,17 +47,26 @@ def init_db():
             cursor.execute(f"ALTER TABLE historico ADD COLUMN {col} {tipo}")
         except sqlite3.OperationalError:
             pass 
+            
+    # Migração específica para a tabela Categorias (adicionando a Descrição)
+    try:
+        cursor.execute("ALTER TABLE categorias ADD COLUMN descricao TEXT")
+    except sqlite3.OperationalError:
+        pass
 
-    # --- DADOS PADRÃO PARA EVITAR BANCO VAZIO ---
+    # --- DADOS PADRÃO (SEMEANDO O BANCO AUTOMATICAMENTE) ---
     cursor.execute("SELECT COUNT(*) FROM configuracoes")
     if cursor.fetchone()[0] == 0:
         cursor.execute("INSERT INTO configuracoes (id, kwh, mao_obra) VALUES (1, 0.95, 35.0)")
 
     cursor.execute("SELECT COUNT(*) FROM categorias")
     if cursor.fetchone()[0] == 0:
-        cursor.executemany("INSERT INTO categorias (nome, tipo_categoria) VALUES (?, ?)", [
-            ("Embalagem", "Insumo"), ("Insumo Geral", "Insumo"), 
-            ("Decorativo", "Peça"), ("Funcional", "Peça")
+        cursor.executemany("INSERT INTO categorias (nome, tipo_categoria, descricao) VALUES (?, ?, ?)", [
+            ("Embalagem", "Insumo", "Caixas, sacolas, plástico bolha, fitas decorativas e laços para envio do produto."),
+            ("Insumo Geral", "Insumo", "Ímãs de neodímio, parafusos, elásticos, tintas, resinas e colas."),
+            ("Decorativo", "Peça", "Estátuas, vasos, bustos, quadros e itens focados puramente no visual (sem esforço mecânico)."),
+            ("Funcional", "Peça", "Suportes para notebook, lixeiras, organizadores de mesa e peças com utilidade prática diária."),
+            ("Mecânico / Estrutural", "Peça", "Engrenagens, travas, suportes de parede e peças que sofrerão impacto, tração ou peso considerável.")
         ])
 
     cursor.execute("SELECT COUNT(*) FROM filamentos")
@@ -150,7 +159,7 @@ if menu == "⚙️ Módulo 1: CADASTROS":
     # --- CRUD: CATEGORIAS ---
     with tab_cat:
         conn = get_db_connection()
-        cat_df = pd.read_sql("SELECT id, nome as 'Nome da Categoria', tipo_categoria as 'Tipo' FROM categorias", conn)
+        cat_df = pd.read_sql("SELECT id, nome as 'Nome da Categoria', tipo_categoria as 'Tipo', descricao as 'Descrição' FROM categorias", conn)
         st.dataframe(cat_df, use_container_width=True, hide_index=True)
 
         acao_cat = st.radio("Ação Categoria", ["Nova", "Editar / Excluir"], horizontal=True, label_visibility="collapsed")
@@ -160,15 +169,18 @@ if menu == "⚙️ Módulo 1: CADASTROS":
                 col1, col2 = st.columns(2)
                 with col1: nome_cat = st.text_input("Nome da Categoria")
                 with col2: tipo_cat = st.selectbox("Aplica-se à:", ["Insumo", "Peça"])
+                
+                desc_cat = st.text_area("Descrição (Opcional)", placeholder="O que entra nesta categoria?")
+                
                 if st.form_submit_button("Salvar Categoria") and nome_cat:
                     try:
-                        conn.cursor().execute("INSERT INTO categorias (nome, tipo_categoria) VALUES (?, ?)", (nome_cat, tipo_cat))
+                        conn.cursor().execute("INSERT INTO categorias (nome, tipo_categoria, descricao) VALUES (?, ?, ?)", (nome_cat, tipo_cat, desc_cat))
                         conn.commit()
-                        st.success("✅ Categoria adicionada!")
+                        st.success("✅ Categoria adicionada com sucesso!")
                         time.sleep(1)
                         st.rerun()
                     except sqlite3.IntegrityError:
-                        st.error("Categoria já existe!")
+                        st.error("Esta categoria já existe no sistema!")
         else:
             if not cat_df.empty:
                 cat_ed = st.selectbox("Selecione a Categoria", cat_df['Nome da Categoria'].tolist())
@@ -179,17 +191,19 @@ if menu == "⚙️ Módulo 1: CADASTROS":
                 with col1: novo_nome = st.text_input("Nome", value=row_cat['Nome da Categoria'])
                 with col2: novo_tipo = st.selectbox("Tipo", ["Insumo", "Peça"], index=["Insumo", "Peça"].index(row_cat['Tipo']))
                 
+                nova_desc = st.text_area("Descrição", value=row_cat['Descrição'] if pd.notna(row_cat['Descrição']) else "")
+                
                 col_btn1, col_btn2 = st.columns(2)
                 if col_btn1.button("🔄 Atualizar Categoria", use_container_width=True):
-                    conn.cursor().execute("UPDATE categorias SET nome=?, tipo_categoria=? WHERE id=?", (novo_nome, novo_tipo, cat_id))
+                    conn.cursor().execute("UPDATE categorias SET nome=?, tipo_categoria=?, descricao=? WHERE id=?", (novo_nome, novo_tipo, nova_desc, cat_id))
                     conn.commit()
-                    st.success("✅ Atualizado!")
+                    st.success("✅ Categoria atualizada!")
                     time.sleep(1)
                     st.rerun()
                 if col_btn2.button("🗑️ Excluir Categoria", use_container_width=True):
                     conn.cursor().execute("DELETE FROM categorias WHERE id=?", (cat_id,))
                     conn.commit()
-                    st.success("✅ Excluído!")
+                    st.success("✅ Categoria excluída!")
                     time.sleep(1)
                     st.rerun()
         conn.close()
