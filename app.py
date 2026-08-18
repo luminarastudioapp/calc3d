@@ -153,20 +153,45 @@ if menu == "⚙️ Módulo 1: CADASTROS":
         cat_df = pd.read_sql("SELECT id, nome as 'Nome da Categoria', tipo_categoria as 'Tipo' FROM categorias", conn)
         st.dataframe(cat_df, use_container_width=True, hide_index=True)
 
-        st.markdown("### 📝 Nova Categoria")
-        with st.form("form_cat", clear_on_submit=True):
-            col1, col2 = st.columns(2)
-            with col1: nome_cat = st.text_input("Nome da Categoria")
-            with col2: tipo_cat = st.selectbox("Aplica-se à:", ["Insumo", "Peça"])
-            if st.form_submit_button("Salvar Categoria") and nome_cat:
-                try:
-                    conn.cursor().execute("INSERT INTO categorias (nome, tipo_categoria) VALUES (?, ?)", (nome_cat, tipo_cat))
+        acao_cat = st.radio("Ação Categoria", ["Nova", "Editar / Excluir"], horizontal=True, label_visibility="collapsed")
+        
+        if acao_cat == "Nova":
+            with st.form("form_cat", clear_on_submit=True):
+                col1, col2 = st.columns(2)
+                with col1: nome_cat = st.text_input("Nome da Categoria")
+                with col2: tipo_cat = st.selectbox("Aplica-se à:", ["Insumo", "Peça"])
+                if st.form_submit_button("Salvar Categoria") and nome_cat:
+                    try:
+                        conn.cursor().execute("INSERT INTO categorias (nome, tipo_categoria) VALUES (?, ?)", (nome_cat, tipo_cat))
+                        conn.commit()
+                        st.success("✅ Categoria adicionada!")
+                        time.sleep(1)
+                        st.rerun()
+                    except sqlite3.IntegrityError:
+                        st.error("Categoria já existe!")
+        else:
+            if not cat_df.empty:
+                cat_ed = st.selectbox("Selecione a Categoria", cat_df['Nome da Categoria'].tolist())
+                row_cat = cat_df[cat_df['Nome da Categoria'] == cat_ed].iloc[0]
+                cat_id = int(row_cat['id'])
+                
+                col1, col2 = st.columns(2)
+                with col1: novo_nome = st.text_input("Nome", value=row_cat['Nome da Categoria'])
+                with col2: novo_tipo = st.selectbox("Tipo", ["Insumo", "Peça"], index=["Insumo", "Peça"].index(row_cat['Tipo']))
+                
+                col_btn1, col_btn2 = st.columns(2)
+                if col_btn1.button("🔄 Atualizar Categoria", use_container_width=True):
+                    conn.cursor().execute("UPDATE categorias SET nome=?, tipo_categoria=? WHERE id=?", (novo_nome, novo_tipo, cat_id))
                     conn.commit()
-                    st.success("✅ Categoria adicionada!")
+                    st.success("✅ Atualizado!")
                     time.sleep(1)
                     st.rerun()
-                except sqlite3.IntegrityError:
-                    st.error("Categoria já existe!")
+                if col_btn2.button("🗑️ Excluir Categoria", use_container_width=True):
+                    conn.cursor().execute("DELETE FROM categorias WHERE id=?", (cat_id,))
+                    conn.commit()
+                    st.success("✅ Excluído!")
+                    time.sleep(1)
+                    st.rerun()
         conn.close()
 
     # --- CRUD: FILAMENTOS ---
@@ -175,16 +200,41 @@ if menu == "⚙️ Módulo 1: CADASTROS":
         filamentos_df = pd.read_sql("SELECT id, nome as 'Nome', preco_kg as 'Preço/KG (R$)' FROM filamentos", conn)
         st.dataframe(filamentos_df, use_container_width=True, hide_index=True)
 
-        st.markdown("### 📝 Novo Filamento")
-        with st.form("form_fil", clear_on_submit=True):
-            nome_fil = st.text_input("Nome do Filamento")
-            preco_fil = st.number_input("Custo Unitário (R$/KG)", min_value=0.0, value=99.0)
-            if st.form_submit_button("Salvar Filamento") and nome_fil:
-                conn.cursor().execute("INSERT INTO filamentos (nome, preco_kg) VALUES (?, ?)", (nome_fil, preco_fil))
-                conn.commit()
-                st.success("✅ Filamento cadastrado!")
-                time.sleep(1)
-                st.rerun()
+        acao_fil = st.radio("Ação Filamento", ["Novo", "Editar / Excluir"], horizontal=True, label_visibility="collapsed", key="rad_fil")
+        
+        if acao_fil == "Novo":
+            with st.form("form_fil", clear_on_submit=True):
+                nome_fil = st.text_input("Nome do Filamento")
+                preco_fil = st.number_input("Custo Unitário (R$/KG)", min_value=0.0, value=99.0)
+                if st.form_submit_button("Salvar Filamento") and nome_fil:
+                    conn.cursor().execute("INSERT INTO filamentos (nome, preco_kg) VALUES (?, ?)", (nome_fil, preco_fil))
+                    conn.commit()
+                    st.success("✅ Filamento cadastrado!")
+                    time.sleep(1)
+                    st.rerun()
+        else:
+            if not filamentos_df.empty:
+                fil_ed = st.selectbox("Selecione o Filamento", filamentos_df['Nome'].tolist())
+                row_fil = filamentos_df[filamentos_df['Nome'] == fil_ed].iloc[0]
+                fil_id = int(row_fil['id'])
+                
+                col1, col2 = st.columns(2)
+                with col1: novo_nome_fil = st.text_input("Nome do Filamento", value=row_fil['Nome'])
+                with col2: novo_preco_fil = st.number_input("Custo Unitário (R$/KG)", min_value=0.0, value=float(row_fil['Preço/KG (R$)']))
+                
+                col_btn1, col_btn2 = st.columns(2)
+                if col_btn1.button("🔄 Atualizar Filamento", use_container_width=True):
+                    conn.cursor().execute("UPDATE filamentos SET nome=?, preco_kg=? WHERE id=?", (novo_nome_fil, novo_preco_fil, fil_id))
+                    conn.commit()
+                    st.success("✅ Atualizado!")
+                    time.sleep(1)
+                    st.rerun()
+                if col_btn2.button("🗑️ Excluir Filamento", use_container_width=True):
+                    conn.cursor().execute("DELETE FROM filamentos WHERE id=?", (fil_id,))
+                    conn.commit()
+                    st.success("✅ Excluído!")
+                    time.sleep(1)
+                    st.rerun()
         conn.close()
 
     # --- CRUD: OUTROS ---
@@ -196,23 +246,56 @@ if menu == "⚙️ Módulo 1: CADASTROS":
         categorias_insumo = pd.read_sql("SELECT nome FROM categorias WHERE tipo_categoria='Insumo'", conn)['nome'].tolist()
         if not categorias_insumo: categorias_insumo = ["Cadastre uma categoria primeiro"]
 
-        st.markdown("### 📝 Novo Insumo/Extra")
-        with st.form("form_outros", clear_on_submit=True):
-            col_o1, col_o2 = st.columns(2)
-            with col_o1:
-                cat_outro = st.selectbox("Categoria", categorias_insumo)
-                nome_outro = st.text_input("Nome do Material (Ex: Ímã Neodímio)")
-                marca_outro = st.text_input("Marca | Modelo")
-            with col_o2:
-                valor_outro = st.number_input("Valor Unitário (R$)", min_value=0.0, value=1.50)
-                espec_outro = st.text_area("Especificações")
-            if st.form_submit_button("Salvar Material Extra") and nome_outro:
-                conn.cursor().execute("INSERT INTO outros (categoria, nome, marca, valor_unit, especificacoes) VALUES (?, ?, ?, ?, ?)", 
-                                      (cat_outro, nome_outro, marca_outro, valor_outro, espec_outro))
-                conn.commit()
-                st.success("✅ Insumo cadastrado!")
-                time.sleep(1)
-                st.rerun()
+        acao_out = st.radio("Ação Outros", ["Novo", "Editar / Excluir"], horizontal=True, label_visibility="collapsed", key="rad_out")
+
+        if acao_out == "Novo":
+            with st.form("form_outros", clear_on_submit=True):
+                col_o1, col_o2 = st.columns(2)
+                with col_o1:
+                    cat_outro = st.selectbox("Categoria", categorias_insumo)
+                    nome_outro = st.text_input("Nome do Material (Ex: Ímã Neodímio)")
+                    marca_outro = st.text_input("Marca | Modelo")
+                with col_o2:
+                    valor_outro = st.number_input("Valor Unitário (R$)", min_value=0.0, value=1.50)
+                    espec_outro = st.text_area("Especificações")
+                if st.form_submit_button("Salvar Material Extra") and nome_outro:
+                    conn.cursor().execute("INSERT INTO outros (categoria, nome, marca, valor_unit, especificacoes) VALUES (?, ?, ?, ?, ?)", 
+                                          (cat_outro, nome_outro, marca_outro, valor_outro, espec_outro))
+                    conn.commit()
+                    st.success("✅ Insumo cadastrado!")
+                    time.sleep(1)
+                    st.rerun()
+        else:
+            if not outros_df.empty:
+                out_ed = st.selectbox("Selecione o Insumo", outros_df['Nome'].tolist())
+                row_out = outros_df[outros_df['Nome'] == out_ed].iloc[0]
+                out_id = int(row_out['id'])
+                
+                idx_cat = categorias_insumo.index(row_out['Categoria']) if row_out['Categoria'] in categorias_insumo else 0
+                
+                col_o1, col_o2 = st.columns(2)
+                with col_o1:
+                    n_cat = st.selectbox("Categoria", categorias_insumo, index=idx_cat)
+                    n_nome = st.text_input("Nome", value=row_out['Nome'])
+                    n_marca = st.text_input("Marca | Modelo", value=row_out['Marca/Modelo'])
+                with col_o2:
+                    n_valor = st.number_input("Valor Unitário (R$)", min_value=0.0, value=float(row_out['Valor Unitário (R$)']))
+                    n_espec = st.text_area("Especificações", value=row_out['Especificações'])
+                
+                col_btn1, col_btn2 = st.columns(2)
+                if col_btn1.button("🔄 Atualizar Insumo", use_container_width=True):
+                    conn.cursor().execute("UPDATE outros SET categoria=?, nome=?, marca=?, valor_unit=?, especificacoes=? WHERE id=?", 
+                                          (n_cat, n_nome, n_marca, n_valor, n_espec, out_id))
+                    conn.commit()
+                    st.success("✅ Atualizado!")
+                    time.sleep(1)
+                    st.rerun()
+                if col_btn2.button("🗑️ Excluir Insumo", use_container_width=True):
+                    conn.cursor().execute("DELETE FROM outros WHERE id=?", (out_id,))
+                    conn.commit()
+                    st.success("✅ Excluído!")
+                    time.sleep(1)
+                    st.rerun()
         conn.close()
 
     # --- CRUD: IMPRESSORAS ---
@@ -225,18 +308,48 @@ if menu == "⚙️ Módulo 1: CADASTROS":
                 "Consumo (kW)": "{:.2f} kW", "Valor (R$)": "R$ {:.2f}"
             }), use_container_width=True, hide_index=True)
 
-        st.markdown("### 📝 Nova Impressora")
-        with st.form("form_imp", clear_on_submit=True):
-            nome_imp = st.text_input("Marca | Modelo da Impressora")
-            kw_imp = st.number_input("Consumo Máquina (kW) - Ex: 0.15", value=0.15, step=0.05)
-            preco_imp = st.number_input("Valor da Impressora (R$)", value=5000.0)
-            vida_imp = st.number_input("Vida Útil Estimada (Horas)", value=3000)
-            if st.form_submit_button("Salvar Máquina") and nome_imp:
-                conn.cursor().execute("INSERT INTO impressoras (nome, watts, preco_maquina, vida_util_h) VALUES (?, ?, ?, ?)", (nome_imp, kw_imp*1000, preco_imp, vida_imp))
-                conn.commit()
-                st.success("✅ Impressora cadastrada!")
-                time.sleep(1)
-                st.rerun()
+        acao_imp = st.radio("Ação Impressora", ["Nova", "Editar / Excluir"], horizontal=True, label_visibility="collapsed", key="rad_imp")
+
+        if acao_imp == "Nova":
+            with st.form("form_imp", clear_on_submit=True):
+                nome_imp = st.text_input("Marca | Modelo da Impressora")
+                kw_imp = st.number_input("Consumo Máquina (kW) - Ex: 0.15", value=0.15, step=0.05)
+                preco_imp = st.number_input("Valor da Impressora (R$)", value=5000.0)
+                vida_imp = st.number_input("Vida Útil Estimada (Horas)", value=3000)
+                if st.form_submit_button("Salvar Máquina") and nome_imp:
+                    conn.cursor().execute("INSERT INTO impressoras (nome, watts, preco_maquina, vida_util_h) VALUES (?, ?, ?, ?)", (nome_imp, kw_imp*1000, preco_imp, vida_imp))
+                    conn.commit()
+                    st.success("✅ Impressora cadastrada!")
+                    time.sleep(1)
+                    st.rerun()
+        else:
+            if not imp_df.empty:
+                imp_ed = st.selectbox("Selecione a Impressora", imp_df['Modelo'].tolist())
+                row_imp = imp_df[imp_df['Modelo'] == imp_ed].iloc[0]
+                imp_id = int(row_imp['id'])
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    n_nome_imp = st.text_input("Modelo", value=row_imp['Modelo'])
+                    n_kw = st.number_input("Consumo (kW)", value=float(row_imp['watts'])/1000, step=0.05)
+                with col2:
+                    n_preco_imp = st.number_input("Valor (R$)", value=float(row_imp['Valor (R$)']))
+                    n_vida = st.number_input("Vida Útil (h)", value=float(row_imp['Vida Útil (h)']))
+                
+                col_btn1, col_btn2 = st.columns(2)
+                if col_btn1.button("🔄 Atualizar Impressora", use_container_width=True):
+                    conn.cursor().execute("UPDATE impressoras SET nome=?, watts=?, preco_maquina=?, vida_util_h=? WHERE id=?", 
+                                          (n_nome_imp, n_kw*1000, n_preco_imp, n_vida, imp_id))
+                    conn.commit()
+                    st.success("✅ Atualizado!")
+                    time.sleep(1)
+                    st.rerun()
+                if col_btn2.button("🗑️ Excluir Impressora", use_container_width=True):
+                    conn.cursor().execute("DELETE FROM impressoras WHERE id=?", (imp_id,))
+                    conn.commit()
+                    st.success("✅ Excluído!")
+                    time.sleep(1)
+                    st.rerun()
         conn.close()
 
 
