@@ -27,13 +27,15 @@ def init_db():
     # --- SCRIPT DE MIGRAÇÃO (Atualiza bancos antigos automaticamente) ---
     colunas_novas = [
         ("memoria_calculo", "TEXT"), ("foto_principal", "TEXT"), 
-        ("origem", "TEXT"), ("link_projeto", "TEXT"), ("custo_mao_obra", "REAL")
+        ("origem", "TEXT"), ("link_projeto", "TEXT"), ("custo_mao_obra", "REAL"),
+        ("arquivo_pago", "TEXT"), ("preco_arquivo", "REAL"), ("descricao", "TEXT"),
+        ("cores", "INTEGER"), ("dim_largura", "REAL"), ("dim_profundidade", "REAL"), ("dim_altura", "REAL")
     ]
     for col, tipo in colunas_novas:
         try:
             cursor.execute(f"ALTER TABLE historico ADD COLUMN {col} {tipo}")
         except sqlite3.OperationalError:
-            pass # Ignora se a coluna já existir
+            pass 
 
     # --- DADOS PADRÃO ---
     cursor.execute("SELECT COUNT(*) FROM configuracoes")
@@ -224,10 +226,10 @@ if menu == "⚙️ Módulo 1: CADASTROS BASE":
 
 
 # =====================================================================
-# MÓDULO 2: NOVO PROJETO (Criação e Precificação da Peça)
+# MÓDULO 2: NOVO PROJETO (Criação e Custos da Peça)
 # =====================================================================
 elif menu == "🚀 Módulo 2: NOVO PROJETO":
-    st.title("🚀 Criação e Precificação de Projeto")
+    st.title("🚀 Criação e Custos de Produção")
     
     conn = get_db_connection()
     materiais_df = pd.read_sql("SELECT * FROM materiais", conn)
@@ -247,14 +249,34 @@ elif menu == "🚀 Módulo 2: NOVO PROJETO":
         foto_b64 = converter_imagem(foto_upload)
         if foto_upload: st.image(foto_upload, width=150)
 
-        # Autoral ou Fornecedor
         origem = st.radio("Origem do Design", ["Autoral", "Fornecedor"], horizontal=True)
+        
         link_projeto = ""
+        arquivo_pago = "Não"
+        preco_arquivo = 0.0
+        
         if origem == "Fornecedor":
             link_projeto = st.text_input("🔗 Link do Projeto (Onde baixou/comprou)")
+            arquivo_pago = st.radio("O arquivo (STL/3MF) é pago?", ["Não", "Sim"], horizontal=True)
+            if arquivo_pago == "Sim":
+                preco_arquivo = st.number_input("Preço de Aquisição do Arquivo (R$)", min_value=0.0, step=5.0)
 
         st.divider()
         st.subheader("⚙️ Parâmetros de Fabricação")
+        
+        descricao = st.text_area("Descrição / Observações do Projeto", placeholder="Ex: Usar preenchimento giroide 15%, sem suportes.")
+        
+        col_c1, col_c2 = st.columns([1, 2])
+        with col_c1:
+            cores = st.number_input("Qtd. de Cores", min_value=1, value=1, step=1)
+        with col_c2:
+            st.caption("Dimensões Finais (cm)")
+            d1, d2, d3 = st.columns(3)
+            with d1: dim_l = st.number_input("Largura", min_value=0.0)
+            with d2: dim_p = st.number_input("Profund.", min_value=0.0)
+            with d3: dim_a = st.number_input("Altura", min_value=0.0)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
         
         col_m1, col_m2 = st.columns(2)
         with col_m1:
@@ -276,50 +298,54 @@ elif menu == "🚀 Módulo 2: NOVO PROJETO":
         st.caption("⏳ **Sua Mão de Obra:** Tempo real que você gasta fatiando, limpando suportes e embalando esta peça.")
         tempo_mao_obra_min = st.number_input("Tempo de Mão de Obra Dedicada (Minutos)", min_value=0, value=15, step=5)
 
-        markup = st.slider("Margem de Lucro (%)", 20, 300, 100, step=10)
-
-    # Lógica de cálculo
+    # Lógica de cálculo estrita de CUSTOS
     total_hours = hours + (mins / 60)
     cost_mat = (weight_g / 1000) * mat_cost_per_kg
     cost_energy = (printer_info['watts'] / 1000) * total_hours * kwh_cost
     cost_depr = (printer_info['preco_maquina'] / max(1, printer_info['vida_util_h'])) * total_hours
-    
-    # Custo da sua hora trabalhada em cima do preparo
     cost_mao_obra = (tempo_mao_obra_min / 60) * mao_obra_rate
     
     total_cost = cost_mat + cost_energy + cost_depr + cost_mao_obra
-    final_price = total_cost * (1 + (markup / 100))
-    profit = final_price - total_cost
-
-    memoria_calc_str = f"Material: R${cost_mat:.2f} | Energia: R${cost_energy:.2f} | Depreciação: R${cost_depr:.2f} | Mão de Obra: R${cost_mao_obra:.2f} | Custo Total: R${total_cost:.2f} | Margem: {markup}%"
+    
+    memoria_calc_str = f"Material: R${cost_mat:.2f} | Energia: R${cost_energy:.2f} | Depreciação: R${cost_depr:.2f} | Mão de Obra: R${cost_mao_obra:.2f} | Arq. Pago: R${preco_arquivo:.2f}"
 
     with col2:
-        st.subheader("📊 Resultado do Orçamento")
+        st.subheader("📊 Resumo de Custos")
         
         if proj_name and weight_g > 0 and (total_hours > 0 or tempo_mao_obra_min > 0):
-            st.metric(label="💰 PREÇO DE VENDA SUGERIDO", value=f"R$ {final_price:.2f}", delta=f"Lucro: R$ {profit:.2f}")
+            st.metric(label="📉 CUSTO TOTAL DE PRODUÇÃO", value=f"R$ {total_cost:.2f}")
+            if preco_arquivo > 0:
+                st.caption(f"*(Não inclui o repasse do arquivo pago de R$ {preco_arquivo:.2f} que será definido no módulo de venda)*")
+            
             st.divider()
             df_detalhes = pd.DataFrame({
-                "Componente": ["Material", "Energia", "Depreciação Máquina", "Sua Mão de Obra", "Lucro Limpo"], 
-                "Valor (R$)": [cost_mat, cost_energy, cost_depr, cost_mao_obra, profit]
+                "Componente de Custo": ["Material", "Energia", "Depreciação Máquina", "Sua Mão de Obra"], 
+                "Valor (R$)": [cost_mat, cost_energy, cost_depr, cost_mao_obra]
             })
             st.dataframe(df_detalhes.style.format({"Valor (R$)": "R$ {:.2f}"}), use_container_width=True, hide_index=True)
 
-            if st.button("💾 Salvar Projeto no Relatório", type="primary", use_container_width=True):
+            if st.button("💾 Salvar Custo no Relatório", type="primary", use_container_width=True):
                 cursor = conn.cursor()
                 data_hoje = datetime.now().strftime("%d/%m/%Y %H:%M")
                 cursor.execute("""
-                    INSERT INTO historico (nome_projeto, material, peso_g, tempo_h, custo_total, preco_venda, data, memoria_calculo, foto_principal, origem, link_projeto, custo_mao_obra) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (proj_name, mat_selected, weight_g, total_hours, total_cost, final_price, data_hoje, memoria_calc_str, foto_b64, origem, link_projeto, cost_mao_obra))
+                    INSERT INTO historico (
+                        nome_projeto, material, peso_g, tempo_h, custo_total, preco_venda, data, 
+                        memoria_calculo, foto_principal, origem, link_projeto, custo_mao_obra,
+                        arquivo_pago, preco_arquivo, descricao, cores, dim_largura, dim_profundidade, dim_altura
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    proj_name, mat_selected, weight_g, total_hours, total_cost, 0.0, data_hoje, 
+                    memoria_calc_str, foto_b64, origem, link_projeto, cost_mao_obra,
+                    arquivo_pago, preco_arquivo, descricao, cores, dim_l, dim_p, dim_a
+                ))
                 conn.commit()
-                st.success("✅ Projeto salvo na Vitrine/Relatório!")
-                time.sleep(1.5)
+                st.success("✅ Custo de produção salvo com sucesso!")
+                import time; time.sleep(1.5)
                 st.rerun()
         elif proj_name == "":
             st.warning("⚠️ Digite um nome para a peça antes de prosseguir.")
         else:
-            st.info("👈 Preencha o peso (g) e o tempo para gerar o orçamento detalhado.")
+            st.info("👈 Preencha os parâmetros para calcular os custos.")
             
     conn.close()
 
@@ -328,7 +354,7 @@ elif menu == "🚀 Módulo 2: NOVO PROJETO":
 # MÓDULO 3: RELATÓRIO (Landscape Print & Memória de Cálculo)
 # =====================================================================
 elif menu == "📜 Módulo 3: RELATÓRIO":
-    st.title("📜 Vitrine de Projetos Salvos")
+    st.title("📜 Vitrine de Produção")
     
     st.markdown("""
         <button onclick="window.print()" style="background-color: #000; color: white; padding: 10px 24px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-bottom: 20px;">
@@ -352,13 +378,11 @@ elif menu == "📜 Módulo 3: RELATÓRIO":
             
             with c1:
                 foto = row.get('foto_principal')
-                
-                # Verificação blindada contra falsos nulos e textos sujos
                 if pd.notna(foto) and isinstance(foto, str) and foto.strip() != "" and foto.strip() != "None":
                     try:
                         st.image(base64.b64decode(foto), use_column_width=True)
                     except Exception:
-                        st.warning("⚠️ Imagem corrompida ou formato inválido.")
+                        st.warning("⚠️ Imagem corrompida.")
                 else:
                     st.info("Nenhuma foto atrelada.")
             
@@ -366,33 +390,39 @@ elif menu == "📜 Módulo 3: RELATÓRIO":
                 origem_lbl = row.get('origem', 'Não Informado')
                 link_lbl = row.get('link_projeto', '')
                 st.markdown(f"**Origem:** {origem_lbl}")
-                if origem_lbl == "Fornecedor" and pd.notna(link_lbl) and link_lbl:
-                    st.markdown(f"🔗 [Acessar Link do Fornecedor]({link_lbl})")
+                if origem_lbl == "Fornecedor":
+                    arq_pago = row.get('arquivo_pago', 'Não')
+                    if arq_pago == "Sim":
+                        st.caption(f"💳 Arquivo Comprado: R$ {row.get('preco_arquivo', 0.0):.2f}")
+                    if pd.notna(link_lbl) and link_lbl:
+                        st.markdown(f"🔗 [Acessar Link do Projeto]({link_lbl})")
                 
-                st.markdown(f"**Material:** {row['material']}")
+                cores = row.get('cores', 1)
+                st.markdown(f"**Cores:** {cores} | **Filamento:** {row['material']}")
                 st.markdown(f"**Peso Total:** {row['peso_g']} g")
-                st.markdown(f"**Tempo de Máquina:** {row['tempo_h']:.2f} h")
-                st.markdown(f"**Custo Base + Mão de Obra:** R$ {row['custo_total']:.2f}")
-                st.markdown(f"**Preço de Venda Sugerido:** <span style='font-size:18px; color:#2e7d32; font-weight:bold;'>R$ {row['preco_venda']:.2f}</span>", unsafe_allow_html=True)
+                st.markdown(f"**Dimensões:** {row.get('dim_largura', 0)} L x {row.get('dim_profundidade', 0)} P x {row.get('dim_altura', 0)} A (cm)")
+                
+                desc = row.get('descricao', '')
+                if pd.notna(desc) and desc.strip() != "":
+                    st.info(f"📝 {desc}")
                 
             with c3:
+                st.markdown(f"**CUSTO TOTAL DE PRODUÇÃO:** <span style='font-size:20px; color:#c62828; font-weight:bold;'>R$ {row['custo_total']:.2f}</span>", unsafe_allow_html=True)
                 st.markdown("**🧠 Memória de Cálculo:**")
                 memoria = row.get('memoria_calculo')
                 if pd.notna(memoria) and memoria:
                     st.caption(memoria.replace(" | ", "<br>"))
-                else:
-                    st.caption("Memória não disponível para registros antigos.")
                 
                 st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("🗑️ Excluir Projeto", key=f"del_proj_{row['id']}", use_container_width=True):
+                if st.button("🗑️ Excluir Ficha", key=f"del_proj_{row['id']}", use_container_width=True):
                     conn = get_db_connection()
                     conn.cursor().execute("DELETE FROM historico WHERE id=?", (row['id'],))
                     conn.commit()
                     conn.close()
-                    st.success("Peça removida da vitrine.")
-                    time.sleep(1)
+                    st.success("Ficha removida com sucesso!")
+                    import time; time.sleep(1)
                     st.rerun()
             
             st.divider()
     else:
-        st.info("Nenhum projeto salvo no banco de dados ainda.")
+        st.info("Nenhuma ficha de produção salva.")
