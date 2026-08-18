@@ -352,8 +352,13 @@ elif menu == "📜 Módulo 3: RELATÓRIO":
             
             with c1:
                 foto = row.get('foto_principal')
-                if pd.notna(foto) and foto:
-                    st.image(base64.b64decode(foto), use_column_width=True)
+                
+                # Verificação blindada contra falsos nulos e textos sujos
+                if pd.notna(foto) and isinstance(foto, str) and foto.strip() != "" and foto.strip() != "None":
+                    try:
+                        st.image(base64.b64decode(foto), use_column_width=True)
+                    except Exception:
+                        st.warning("⚠️ Imagem corrompida ou formato inválido.")
                 else:
                     st.info("Nenhuma foto atrelada.")
             
