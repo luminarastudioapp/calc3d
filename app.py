@@ -15,10 +15,15 @@ def init_connection():
 
 supabase = init_connection()
 
-# Função auxiliar para puxar os dados de forma limpa
+# Função auxiliar blindada contra erros de API
 def get_df(table_name):
-    response = supabase.table(table_name).select("*").execute()
-    return pd.DataFrame(response.data)
+    try:
+        response = supabase.table(table_name).select("*").execute()
+        return pd.DataFrame(response.data)
+    except Exception as e:
+        st.error(f"🚨 Erro de comunicação com a tabela '{table_name}'. Verifique o banco de dados.")
+        st.caption(f"Detalhe técnico: {e}")
+        return pd.DataFrame() # Retorna vazio para o sistema não quebrar a tela
 
 def converter_imagem(upload):
     if upload is not None:
