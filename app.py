@@ -1,91 +1,24 @@
-import sqlite3
 import pandas as pd
 from datetime import datetime
 import streamlit as st
 import base64
 import json
 import time
+from supabase import create_client, Client
 
-# --- 1. CONFIGURAÇÃO E BANCO DE DADOS (SQLite) ---
-DB_NAME = "3d_calc_pro.db"
+# --- 1. CONFIGURAÇÃO DO SUPABASE ---
+@st.cache_resource
+def init_connection():
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    return create_client(url, key)
 
-def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    
-    # --- RENAME MATERIAIS PARA FILAMENTOS ---
-    try:
-        cursor.execute("ALTER TABLE materiais RENAME TO filamentos")
-    except sqlite3.OperationalError:
-        pass
+supabase = init_connection()
 
-    # --- TABELAS BASE ---
-    cursor.execute('''CREATE TABLE IF NOT EXISTS filamentos (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT UNIQUE, preco_kg REAL)''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS impressoras (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT UNIQUE, watts REAL, preco_maquina REAL, vida_util_h REAL)''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS configuracoes (id INTEGER PRIMARY KEY, kwh REAL, mao_obra REAL)''')
-    
-    # --- TABELAS DE CATEGORIAS E OUTROS ---
-    cursor.execute('''CREATE TABLE IF NOT EXISTS categorias (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT UNIQUE, tipo_categoria TEXT, descricao TEXT)''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS outros (id INTEGER PRIMARY KEY AUTOINCREMENT, categoria TEXT, nome TEXT, marca TEXT, valor_unit REAL, especificacoes TEXT)''')
-
-    cursor.execute('''CREATE TABLE IF NOT EXISTS historico (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, 
-        nome_projeto TEXT, material TEXT, peso_g REAL, tempo_h REAL, 
-        custo_total REAL, preco_venda REAL, data TEXT
-    )''')
-    
-    # --- SCRIPT DE MIGRAÇÃO ---
-    colunas_novas = [
-        ("memoria_calculo", "TEXT"), ("foto_principal", "TEXT"), 
-        ("origem", "TEXT"), ("link_projeto", "TEXT"), ("custo_mao_obra", "REAL"),
-        ("arquivo_pago", "TEXT"), ("preco_arquivo", "REAL"), ("descricao", "TEXT"),
-        ("cores", "INTEGER"), ("dim_largura", "REAL"), ("dim_profundidade", "REAL"), ("dim_altura", "REAL"),
-        ("categoria_peca", "TEXT"), ("custos_extras", "TEXT"), ("markup_aplicado", "REAL")
-    ]
-    for col, tipo in colunas_novas:
-        try:
-            cursor.execute(f"ALTER TABLE historico ADD COLUMN {col} {tipo}")
-        except sqlite3.OperationalError:
-            pass 
-            
-    # Migração específica para a tabela Categorias (adicionando a Descrição)
-    try:
-        cursor.execute("ALTER TABLE categorias ADD COLUMN descricao TEXT")
-    except sqlite3.OperationalError:
-        pass
-
-    # --- DADOS PADRÃO (SEMEANDO O BANCO AUTOMATICAMENTE) ---
-    cursor.execute("SELECT COUNT(*) FROM configuracoes")
-    if cursor.fetchone()[0] == 0:
-        cursor.execute("INSERT INTO configuracoes (id, kwh, mao_obra) VALUES (1, 0.95, 35.0)")
-
-    cursor.execute("SELECT COUNT(*) FROM categorias")
-    if cursor.fetchone()[0] == 0:
-        cursor.executemany("INSERT INTO categorias (nome, tipo_categoria, descricao) VALUES (?, ?, ?)", [
-            ("Embalagem", "Insumo", "Caixas, sacolas, plástico bolha, fitas decorativas e laços para envio do produto."),
-            ("Insumo Geral", "Insumo", "Ímãs de neodímio, parafusos, elásticos, tintas, resinas e colas."),
-            ("Decorativo", "Peça", "Estátuas, vasos, bustos, quadros e itens focados puramente no visual (sem esforço mecânico)."),
-            ("Funcional", "Peça", "Suportes para notebook, lixeiras, organizadores de mesa e peças com utilidade prática diária."),
-            ("Mecânico / Estrutural", "Peça", "Engrenagens, travas, suportes de parede e peças que sofrerão impacto, tração ou peso considerável.")
-        ])
-
-    cursor.execute("SELECT COUNT(*) FROM filamentos")
-    if cursor.fetchone()[0] == 0:
-        cursor.executemany("INSERT INTO filamentos (nome, preco_kg) VALUES (?, ?)", [("PLA", 99.0), ("PETG", 119.0)])
-        
-    cursor.execute("SELECT COUNT(*) FROM impressoras")
-    if cursor.fetchone()[0] == 0:
-        cursor.executemany("INSERT INTO impressoras (nome, watts, preco_maquina, vida_util_h) VALUES (?, ?, ?, ?)", [
-            ("Ender 3", 150.0, 1800.0, 4000.0), ("Bambu Lab A1 + AMS Lite", 150.0, 4200.0, 5000.0)
-        ])
-        
-    conn.commit()
-    conn.close()
-
-init_db()
-
-def get_db_connection():
-    return sqlite3.connect(DB_NAME)
+# Função auxiliar para puxar os dados de forma limpa
+def get_df(table_name):
+    response = supabase.table(table_name).select("*").execute()
+    return pd.DataFrame(response.data)
 
 def converter_imagem(upload):
     if upload is not None:
@@ -128,7 +61,7 @@ menu = st.sidebar.radio("Módulos do Sistema", [
 ])
 
 # =====================================================================
-# MÓDULO 1: CADASTROS (Configurações, Categorias, Filamentos, Outros, Impressoras)
+# MÓDULO 1: CADASTROS 
 # =====================================================================
 if menu == "⚙️ Módulo 1: CADASTROS":
     st.title("⚙️ Cadastros e Custos da Gráfica")
@@ -136,31 +69,31 @@ if menu == "⚙️ Módulo 1: CADASTROS":
     
     # --- CONFIGURAÇÕES GERAIS ---
     with tab_cfg:
-        conn = get_db_connection()
-        cfg_df = pd.read_sql("SELECT * FROM configuracoes WHERE id=1", conn)
-        kwh_atual = float(cfg_df['kwh'][0])
-        mao_obra_atual = float(cfg_df['mao_obra'][0])
-        
-        st.markdown("### Parâmetros Base da Sua Produção")
-        with st.form("form_cfg"):
-            col_c1, col_c2 = st.columns(2)
-            with col_c1:
-                novo_kwh = st.number_input("Custo do kWh (R$)", value=kwh_atual, step=0.05)
-            with col_c2:
-                nova_mao_obra = st.number_input("Seu Valor Hora - Mão de Obra (R$/h)", value=mao_obra_atual, step=5.0)
-            if st.form_submit_button("Atualizar Custos Fixos"):
-                conn.cursor().execute("UPDATE configuracoes SET kwh=?, mao_obra=? WHERE id=1", (novo_kwh, nova_mao_obra))
-                conn.commit()
-                st.success("✅ Custos base atualizados!")
-                time.sleep(1)
-                st.rerun()
-        conn.close()
+        cfg_df = get_df('configuracoes')
+        if not cfg_df.empty:
+            kwh_atual = float(cfg_df.iloc[0]['kwh'])
+            mao_obra_atual = float(cfg_df.iloc[0]['mao_obra'])
+            
+            st.markdown("### Parâmetros Base da Sua Produção")
+            with st.form("form_cfg"):
+                col_c1, col_c2 = st.columns(2)
+                with col_c1:
+                    novo_kwh = st.number_input("Custo do kWh (R$)", value=kwh_atual, step=0.05)
+                with col_c2:
+                    nova_mao_obra = st.number_input("Seu Valor Hora - Mão de Obra (R$/h)", value=mao_obra_atual, step=5.0)
+                if st.form_submit_button("Atualizar Custos Fixos"):
+                    supabase.table('configuracoes').update({'kwh': novo_kwh, 'mao_obra': nova_mao_obra}).eq('id', 1).execute()
+                    st.success("✅ Custos base atualizados!")
+                    time.sleep(1)
+                    st.rerun()
 
     # --- CRUD: CATEGORIAS ---
     with tab_cat:
-        conn = get_db_connection()
-        cat_df = pd.read_sql("SELECT id, nome as 'Nome da Categoria', tipo_categoria as 'Tipo', descricao as 'Descrição' FROM categorias", conn)
-        st.dataframe(cat_df, use_container_width=True, hide_index=True)
+        cat_df = get_df('categorias')
+        if not cat_df.empty:
+            display_cat = cat_df.copy()
+            display_cat.rename(columns={'nome': 'Nome da Categoria', 'tipo_categoria': 'Tipo', 'descricao': 'Descrição'}, inplace=True)
+            st.dataframe(display_cat[['id', 'Nome da Categoria', 'Tipo', 'Descrição']], use_container_width=True, hide_index=True)
 
         acao_cat = st.radio("Ação Categoria", ["Nova", "Editar / Excluir"], horizontal=True, label_visibility="collapsed")
         
@@ -169,50 +102,46 @@ if menu == "⚙️ Módulo 1: CADASTROS":
                 col1, col2 = st.columns(2)
                 with col1: nome_cat = st.text_input("Nome da Categoria")
                 with col2: tipo_cat = st.selectbox("Aplica-se à:", ["Insumo", "Peça"])
-                
                 desc_cat = st.text_area("Descrição (Opcional)", placeholder="O que entra nesta categoria?")
                 
                 if st.form_submit_button("Salvar Categoria") and nome_cat:
                     try:
-                        conn.cursor().execute("INSERT INTO categorias (nome, tipo_categoria, descricao) VALUES (?, ?, ?)", (nome_cat, tipo_cat, desc_cat))
-                        conn.commit()
+                        supabase.table('categorias').insert({'nome': nome_cat, 'tipo_categoria': tipo_cat, 'descricao': desc_cat}).execute()
                         st.success("✅ Categoria adicionada com sucesso!")
                         time.sleep(1)
                         st.rerun()
-                    except sqlite3.IntegrityError:
-                        st.error("Esta categoria já existe no sistema!")
+                    except Exception:
+                        st.error("Esta categoria já existe ou ocorreu um erro!")
         else:
             if not cat_df.empty:
-                cat_ed = st.selectbox("Selecione a Categoria", cat_df['Nome da Categoria'].tolist())
-                row_cat = cat_df[cat_df['Nome da Categoria'] == cat_ed].iloc[0]
+                cat_ed = st.selectbox("Selecione a Categoria", cat_df['nome'].tolist())
+                row_cat = cat_df[cat_df['nome'] == cat_ed].iloc[0]
                 cat_id = int(row_cat['id'])
                 
                 col1, col2 = st.columns(2)
-                with col1: novo_nome = st.text_input("Nome", value=row_cat['Nome da Categoria'])
-                with col2: novo_tipo = st.selectbox("Tipo", ["Insumo", "Peça"], index=["Insumo", "Peça"].index(row_cat['Tipo']))
-                
-                nova_desc = st.text_area("Descrição", value=row_cat['Descrição'] if pd.notna(row_cat['Descrição']) else "")
+                with col1: novo_nome = st.text_input("Nome", value=row_cat['nome'])
+                with col2: novo_tipo = st.selectbox("Tipo", ["Insumo", "Peça"], index=["Insumo", "Peça"].index(row_cat['tipo_categoria']))
+                nova_desc = st.text_area("Descrição", value=row_cat['descricao'] if pd.notna(row_cat['descricao']) else "")
                 
                 col_btn1, col_btn2 = st.columns(2)
                 if col_btn1.button("🔄 Atualizar Categoria", use_container_width=True):
-                    conn.cursor().execute("UPDATE categorias SET nome=?, tipo_categoria=?, descricao=? WHERE id=?", (novo_nome, novo_tipo, nova_desc, cat_id))
-                    conn.commit()
+                    supabase.table('categorias').update({'nome': novo_nome, 'tipo_categoria': novo_tipo, 'descricao': nova_desc}).eq('id', cat_id).execute()
                     st.success("✅ Categoria atualizada!")
                     time.sleep(1)
                     st.rerun()
                 if col_btn2.button("🗑️ Excluir Categoria", use_container_width=True):
-                    conn.cursor().execute("DELETE FROM categorias WHERE id=?", (cat_id,))
-                    conn.commit()
+                    supabase.table('categorias').delete().eq('id', cat_id).execute()
                     st.success("✅ Categoria excluída!")
                     time.sleep(1)
                     st.rerun()
-        conn.close()
 
     # --- CRUD: FILAMENTOS ---
     with tab_fil:
-        conn = get_db_connection()
-        filamentos_df = pd.read_sql("SELECT id, nome as 'Nome', preco_kg as 'Preço/KG (R$)' FROM filamentos", conn)
-        st.dataframe(filamentos_df, use_container_width=True, hide_index=True)
+        filamentos_df = get_df('filamentos')
+        if not filamentos_df.empty:
+            display_fil = filamentos_df.copy()
+            display_fil.rename(columns={'nome': 'Nome', 'preco_kg': 'Preço/KG (R$)'}, inplace=True)
+            st.dataframe(display_fil[['id', 'Nome', 'Preço/KG (R$)']], use_container_width=True, hide_index=True)
 
         acao_fil = st.radio("Ação Filamento", ["Novo", "Editar / Excluir"], horizontal=True, label_visibility="collapsed", key="rad_fil")
         
@@ -221,44 +150,42 @@ if menu == "⚙️ Módulo 1: CADASTROS":
                 nome_fil = st.text_input("Nome do Filamento")
                 preco_fil = st.number_input("Custo Unitário (R$/KG)", min_value=0.0, value=99.0)
                 if st.form_submit_button("Salvar Filamento") and nome_fil:
-                    conn.cursor().execute("INSERT INTO filamentos (nome, preco_kg) VALUES (?, ?)", (nome_fil, preco_fil))
-                    conn.commit()
+                    supabase.table('filamentos').insert({'nome': nome_fil, 'preco_kg': preco_fil}).execute()
                     st.success("✅ Filamento cadastrado!")
                     time.sleep(1)
                     st.rerun()
         else:
             if not filamentos_df.empty:
-                fil_ed = st.selectbox("Selecione o Filamento", filamentos_df['Nome'].tolist())
-                row_fil = filamentos_df[filamentos_df['Nome'] == fil_ed].iloc[0]
+                fil_ed = st.selectbox("Selecione o Filamento", filamentos_df['nome'].tolist())
+                row_fil = filamentos_df[filamentos_df['nome'] == fil_ed].iloc[0]
                 fil_id = int(row_fil['id'])
                 
                 col1, col2 = st.columns(2)
-                with col1: novo_nome_fil = st.text_input("Nome do Filamento", value=row_fil['Nome'])
-                with col2: novo_preco_fil = st.number_input("Custo Unitário (R$/KG)", min_value=0.0, value=float(row_fil['Preço/KG (R$)']))
+                with col1: novo_nome_fil = st.text_input("Nome do Filamento", value=row_fil['nome'])
+                with col2: novo_preco_fil = st.number_input("Custo Unitário (R$/KG)", min_value=0.0, value=float(row_fil['preco_kg']))
                 
                 col_btn1, col_btn2 = st.columns(2)
                 if col_btn1.button("🔄 Atualizar Filamento", use_container_width=True):
-                    conn.cursor().execute("UPDATE filamentos SET nome=?, preco_kg=? WHERE id=?", (novo_nome_fil, novo_preco_fil, fil_id))
-                    conn.commit()
+                    supabase.table('filamentos').update({'nome': novo_nome_fil, 'preco_kg': novo_preco_fil}).eq('id', fil_id).execute()
                     st.success("✅ Atualizado!")
                     time.sleep(1)
                     st.rerun()
                 if col_btn2.button("🗑️ Excluir Filamento", use_container_width=True):
-                    conn.cursor().execute("DELETE FROM filamentos WHERE id=?", (fil_id,))
-                    conn.commit()
+                    supabase.table('filamentos').delete().eq('id', fil_id).execute()
                     st.success("✅ Excluído!")
                     time.sleep(1)
                     st.rerun()
-        conn.close()
 
     # --- CRUD: OUTROS ---
     with tab_out:
-        conn = get_db_connection()
-        outros_df = pd.read_sql("SELECT id, categoria as 'Categoria', nome as 'Nome', marca as 'Marca/Modelo', valor_unit as 'Valor Unitário (R$)', especificacoes as 'Especificações' FROM outros", conn)
-        st.dataframe(outros_df, use_container_width=True, hide_index=True)
+        outros_df = get_df('outros')
+        if not outros_df.empty:
+            display_out = outros_df.copy()
+            display_out.rename(columns={'categoria': 'Categoria', 'nome': 'Nome', 'marca': 'Marca/Modelo', 'valor_unit': 'Valor Unitário (R$)', 'especificacoes': 'Especificações'}, inplace=True)
+            st.dataframe(display_out[['id', 'Categoria', 'Nome', 'Marca/Modelo', 'Valor Unitário (R$)', 'Especificações']], use_container_width=True, hide_index=True)
 
-        categorias_insumo = pd.read_sql("SELECT nome FROM categorias WHERE tipo_categoria='Insumo'", conn)['nome'].tolist()
-        if not categorias_insumo: categorias_insumo = ["Cadastre uma categoria primeiro"]
+        cat_insumos_df = supabase.table('categorias').select('nome').eq('tipo_categoria', 'Insumo').execute()
+        categorias_insumo = [c['nome'] for c in cat_insumos_df.data] if cat_insumos_df.data else ["Cadastre uma categoria primeiro"]
 
         acao_out = st.radio("Ação Outros", ["Novo", "Editar / Excluir"], horizontal=True, label_visibility="collapsed", key="rad_out")
 
@@ -273,52 +200,47 @@ if menu == "⚙️ Módulo 1: CADASTROS":
                     valor_outro = st.number_input("Valor Unitário (R$)", min_value=0.0, value=1.50)
                     espec_outro = st.text_area("Especificações")
                 if st.form_submit_button("Salvar Material Extra") and nome_outro:
-                    conn.cursor().execute("INSERT INTO outros (categoria, nome, marca, valor_unit, especificacoes) VALUES (?, ?, ?, ?, ?)", 
-                                          (cat_outro, nome_outro, marca_outro, valor_outro, espec_outro))
-                    conn.commit()
+                    supabase.table('outros').insert({'categoria': cat_outro, 'nome': nome_outro, 'marca': marca_outro, 'valor_unit': valor_outro, 'especificacoes': espec_outro}).execute()
                     st.success("✅ Insumo cadastrado!")
                     time.sleep(1)
                     st.rerun()
         else:
             if not outros_df.empty:
-                out_ed = st.selectbox("Selecione o Insumo", outros_df['Nome'].tolist())
-                row_out = outros_df[outros_df['Nome'] == out_ed].iloc[0]
+                out_ed = st.selectbox("Selecione o Insumo", outros_df['nome'].tolist())
+                row_out = outros_df[outros_df['nome'] == out_ed].iloc[0]
                 out_id = int(row_out['id'])
                 
-                idx_cat = categorias_insumo.index(row_out['Categoria']) if row_out['Categoria'] in categorias_insumo else 0
+                idx_cat = categorias_insumo.index(row_out['categoria']) if row_out['categoria'] in categorias_insumo else 0
                 
                 col_o1, col_o2 = st.columns(2)
                 with col_o1:
                     n_cat = st.selectbox("Categoria", categorias_insumo, index=idx_cat)
-                    n_nome = st.text_input("Nome", value=row_out['Nome'])
-                    n_marca = st.text_input("Marca | Modelo", value=row_out['Marca/Modelo'])
+                    n_nome = st.text_input("Nome", value=row_out['nome'])
+                    n_marca = st.text_input("Marca | Modelo", value=row_out['marca'])
                 with col_o2:
-                    n_valor = st.number_input("Valor Unitário (R$)", min_value=0.0, value=float(row_out['Valor Unitário (R$)']))
-                    n_espec = st.text_area("Especificações", value=row_out['Especificações'])
+                    n_valor = st.number_input("Valor Unitário (R$)", min_value=0.0, value=float(row_out['valor_unit']))
+                    n_espec = st.text_area("Especificações", value=row_out['especificacoes'])
                 
                 col_btn1, col_btn2 = st.columns(2)
                 if col_btn1.button("🔄 Atualizar Insumo", use_container_width=True):
-                    conn.cursor().execute("UPDATE outros SET categoria=?, nome=?, marca=?, valor_unit=?, especificacoes=? WHERE id=?", 
-                                          (n_cat, n_nome, n_marca, n_valor, n_espec, out_id))
-                    conn.commit()
+                    supabase.table('outros').update({'categoria': n_cat, 'nome': n_nome, 'marca': n_marca, 'valor_unit': n_valor, 'especificacoes': n_espec}).eq('id', out_id).execute()
                     st.success("✅ Atualizado!")
                     time.sleep(1)
                     st.rerun()
                 if col_btn2.button("🗑️ Excluir Insumo", use_container_width=True):
-                    conn.cursor().execute("DELETE FROM outros WHERE id=?", (out_id,))
-                    conn.commit()
+                    supabase.table('outros').delete().eq('id', out_id).execute()
                     st.success("✅ Excluído!")
                     time.sleep(1)
                     st.rerun()
-        conn.close()
 
     # --- CRUD: IMPRESSORAS ---
     with tab_imp:
-        conn = get_db_connection()
-        imp_df = pd.read_sql("SELECT id, nome as 'Modelo', watts, preco_maquina as 'Valor (R$)', vida_util_h as 'Vida Útil (h)' FROM impressoras", conn)
+        imp_df = get_df('impressoras')
         if not imp_df.empty:
             imp_df['Consumo (kW)'] = imp_df['watts'] / 1000
-            st.dataframe(imp_df[['Modelo', 'Consumo (kW)', 'Valor (R$)', 'Vida Útil (h)']].style.format({
+            display_imp = imp_df.copy()
+            display_imp.rename(columns={'nome': 'Modelo', 'preco_maquina': 'Valor (R$)', 'vida_util_h': 'Vida Útil (h)'}, inplace=True)
+            st.dataframe(display_imp[['Modelo', 'Consumo (kW)', 'Valor (R$)', 'Vida Útil (h)']].style.format({
                 "Consumo (kW)": "{:.2f} kW", "Valor (R$)": "R$ {:.2f}"
             }), use_container_width=True, hide_index=True)
 
@@ -331,57 +253,54 @@ if menu == "⚙️ Módulo 1: CADASTROS":
                 preco_imp = st.number_input("Valor da Impressora (R$)", value=5000.0)
                 vida_imp = st.number_input("Vida Útil Estimada (Horas)", value=3000)
                 if st.form_submit_button("Salvar Máquina") and nome_imp:
-                    conn.cursor().execute("INSERT INTO impressoras (nome, watts, preco_maquina, vida_util_h) VALUES (?, ?, ?, ?)", (nome_imp, kw_imp*1000, preco_imp, vida_imp))
-                    conn.commit()
+                    supabase.table('impressoras').insert({'nome': nome_imp, 'watts': kw_imp*1000, 'preco_maquina': preco_imp, 'vida_util_h': vida_imp}).execute()
                     st.success("✅ Impressora cadastrada!")
                     time.sleep(1)
                     st.rerun()
         else:
             if not imp_df.empty:
-                imp_ed = st.selectbox("Selecione a Impressora", imp_df['Modelo'].tolist())
-                row_imp = imp_df[imp_df['Modelo'] == imp_ed].iloc[0]
+                imp_ed = st.selectbox("Selecione a Impressora", imp_df['nome'].tolist())
+                row_imp = imp_df[imp_df['nome'] == imp_ed].iloc[0]
                 imp_id = int(row_imp['id'])
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    n_nome_imp = st.text_input("Modelo", value=row_imp['Modelo'])
+                    n_nome_imp = st.text_input("Modelo", value=row_imp['nome'])
                     n_kw = st.number_input("Consumo (kW)", value=float(row_imp['watts'])/1000, step=0.05)
                 with col2:
-                    n_preco_imp = st.number_input("Valor (R$)", value=float(row_imp['Valor (R$)']))
-                    n_vida = st.number_input("Vida Útil (h)", value=float(row_imp['Vida Útil (h)']))
+                    n_preco_imp = st.number_input("Valor (R$)", value=float(row_imp['preco_maquina']))
+                    n_vida = st.number_input("Vida Útil (h)", value=float(row_imp['vida_util_h']))
                 
                 col_btn1, col_btn2 = st.columns(2)
                 if col_btn1.button("🔄 Atualizar Impressora", use_container_width=True):
-                    conn.cursor().execute("UPDATE impressoras SET nome=?, watts=?, preco_maquina=?, vida_util_h=? WHERE id=?", 
-                                          (n_nome_imp, n_kw*1000, n_preco_imp, n_vida, imp_id))
-                    conn.commit()
+                    supabase.table('impressoras').update({'nome': n_nome_imp, 'watts': n_kw*1000, 'preco_maquina': n_preco_imp, 'vida_util_h': n_vida}).eq('id', imp_id).execute()
                     st.success("✅ Atualizado!")
                     time.sleep(1)
                     st.rerun()
                 if col_btn2.button("🗑️ Excluir Impressora", use_container_width=True):
-                    conn.cursor().execute("DELETE FROM impressoras WHERE id=?", (imp_id,))
-                    conn.commit()
+                    supabase.table('impressoras').delete().eq('id', imp_id).execute()
                     st.success("✅ Excluído!")
                     time.sleep(1)
                     st.rerun()
-        conn.close()
 
 
 # =====================================================================
-# MÓDULO 2: NOVO PROJETO (Criação, Custos e Markup)
+# MÓDULO 2: NOVO PROJETO 
 # =====================================================================
 elif menu == "🚀 Módulo 2: NOVO PROJETO":
     st.title("🚀 Criação e Precificação de Projeto")
     
-    conn = get_db_connection()
-    filamentos_df = pd.read_sql("SELECT * FROM filamentos", conn)
-    impressoras_df = pd.read_sql("SELECT * FROM impressoras", conn)
-    categorias_peca_df = pd.read_sql("SELECT nome FROM categorias WHERE tipo_categoria='Peça'", conn)
-    outros_df = pd.read_sql("SELECT * FROM outros", conn)
-    cfg_df = pd.read_sql("SELECT * FROM configuracoes WHERE id=1", conn)
+    filamentos_df = get_df('filamentos')
+    impressoras_df = get_df('impressoras')
     
-    kwh_cost = float(cfg_df['kwh'][0])
-    mao_obra_rate = float(cfg_df['mao_obra'][0])
+    cat_pecas_resp = supabase.table('categorias').select('nome').eq('tipo_categoria', 'Peça').execute()
+    categorias_peca_df = pd.DataFrame(cat_pecas_resp.data)
+    
+    outros_df = get_df('outros')
+    cfg_df = get_df('configuracoes')
+    
+    kwh_cost = float(cfg_df.iloc[0]['kwh']) if not cfg_df.empty else 0.95
+    mao_obra_rate = float(cfg_df.iloc[0]['mao_obra']) if not cfg_df.empty else 35.0
     
     col1, col2 = st.columns([1.2, 1], gap="large")
 
@@ -471,7 +390,7 @@ elif menu == "🚀 Módulo 2: NOVO PROJETO":
                         st.rerun()
                     custo_extras_total += ex['subtotal']
         else:
-            st.info("Cadastre insumos no Módulo 1 para usá-locomo custos extras.")
+            st.info("Cadastre insumos no Módulo 1 para usá-los como custos extras.")
             custo_extras_total = 0.0
 
     # CÁLCULOS BASE
@@ -484,7 +403,6 @@ elif menu == "🚀 Módulo 2: NOVO PROJETO":
     total_cost_prod = cost_mat + cost_energy + cost_depr + cost_mao_obra + custo_extras_total
     
     with col2:
-        # IMPLEMENTAÇÃO DO MARKUP IDÊNTICA À IMAGEM
         st.markdown("### 📈 Lucro Desejado")
         st.markdown("""
         <div style='background-color: #f8f9fa; padding: 20px; border-radius: 10px; border: 1px solid #e0e0e0;'>
@@ -492,7 +410,6 @@ elif menu == "🚀 Módulo 2: NOVO PROJETO":
         
         st.session_state.markup = st.slider("Markup (%)", 0, 500, st.session_state.markup, key="markup_slider")
         
-        # Botões Rápidos
         btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(4)
         btn_col1.button("50%", on_click=set_markup, args=(50,), use_container_width=True)
         btn_col2.button("100%", on_click=set_markup, args=(100,), use_container_width=True)
@@ -501,7 +418,6 @@ elif menu == "🚀 Módulo 2: NOVO PROJETO":
         
         st.markdown("</div>", unsafe_allow_html=True)
         
-        # CÁLCULO DE VENDA
         preco_venda_final = total_cost_prod * (1 + (st.session_state.markup / 100))
         lucro_liquido = preco_venda_final - total_cost_prod
 
@@ -520,35 +436,29 @@ elif menu == "🚀 Módulo 2: NOVO PROJETO":
             memoria_calc_str = f"Mat: R${cost_mat:.2f} | Energ: R${cost_energy:.2f} | Deprec: R${cost_depr:.2f} | MO: R${cost_mao_obra:.2f} | Extras: R${custo_extras_total:.2f} | Markup: {st.session_state.markup}%"
 
             if st.button("💾 Salvar Precificação Completa", type="primary", use_container_width=True):
-                cursor = conn.cursor()
                 data_hoje = datetime.now().strftime("%d/%m/%Y %H:%M")
                 
-                cursor.execute("""
-                    INSERT INTO historico (
-                        nome_projeto, material, peso_g, tempo_h, custo_total, preco_venda, data, 
-                        memoria_calculo, foto_principal, origem, link_projeto, custo_mao_obra,
-                        arquivo_pago, preco_arquivo, descricao, cores, dim_largura, dim_profundidade, dim_altura,
-                        categoria_peca, custos_extras, markup_aplicado
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    proj_name, fil_selected, weight_g, total_hours, total_cost_prod, preco_venda_final, data_hoje, 
-                    memoria_calc_str, foto_b64, origem, link_projeto, cost_mao_obra,
-                    arquivo_pago, preco_arquivo, descricao, cores, dim_l, dim_p, dim_a,
-                    cat_peca_selecionada, json.dumps(st.session_state.lista_extras), st.session_state.markup
-                ))
-                conn.commit()
-                st.session_state.lista_extras = [] # Limpa os extras para o próximo projeto
+                supabase.table('historico').insert({
+                    'nome_projeto': proj_name, 'material': fil_selected, 'peso_g': weight_g, 
+                    'tempo_h': total_hours, 'custo_total': total_cost_prod, 'preco_venda': preco_venda_final, 
+                    'data': data_hoje, 'memoria_calculo': memoria_calc_str, 'foto_principal': foto_b64, 
+                    'origem': origem, 'link_projeto': link_projeto, 'custo_mao_obra': cost_mao_obra,
+                    'arquivo_pago': arquivo_pago, 'preco_arquivo': preco_arquivo, 'descricao': descricao, 
+                    'cores': cores, 'dim_largura': dim_l, 'dim_profundidade': dim_p, 'dim_altura': dim_a,
+                    'categoria_peca': cat_peca_selecionada, 'custos_extras': json.dumps(st.session_state.lista_extras), 
+                    'markup_aplicado': st.session_state.markup
+                }).execute()
+                
+                st.session_state.lista_extras = [] 
                 st.success("✅ Projeto salvo com a precificação completa!")
                 time.sleep(1.5)
                 st.rerun()
         else:
-            st.info("👈 Preencha os parâmetros e adicione o peso da peça para gerar o cálculo de venda.")
-            
-    conn.close()
+            st.info("👈 Preencha os parâmetros e adicione o peso da peça para gerar o cálculo.")
 
 
 # =====================================================================
-# MÓDULO 3: RELATÓRIO (Landscape Print & Memória de Cálculo)
+# MÓDULO 3: RELATÓRIO 
 # =====================================================================
 elif menu == "📜 Módulo 3: RELATÓRIO":
     st.title("📜 Vitrine de Produção e Venda")
@@ -559,9 +469,8 @@ elif menu == "📜 Módulo 3: RELATÓRIO":
         </button>
     """, unsafe_allow_html=True)
     
-    conn = get_db_connection()
-    df_hist = pd.read_sql("SELECT * FROM historico ORDER BY id DESC", conn)
-    conn.close()
+    resp_hist = supabase.table('historico').select('*').order('id', desc=True).execute()
+    df_hist = pd.DataFrame(resp_hist.data)
 
     if not df_hist.empty:
         for idx, row in df_hist.iterrows():
@@ -597,7 +506,6 @@ elif menu == "📜 Módulo 3: RELATÓRIO":
                 st.markdown(f"**Peso:** {row['peso_g']} g | **Tempo:** {row['tempo_h']:.2f} h")
                 st.markdown(f"**Dimensões:** {row.get('dim_largura', 0)} L x {row.get('dim_profundidade', 0)} P x {row.get('dim_altura', 0)} A (cm)")
                 
-                # Exibindo itens extras se houver
                 extras_json = row.get('custos_extras', '[]')
                 if pd.notna(extras_json) and extras_json != '[]':
                     try:
@@ -619,10 +527,7 @@ elif menu == "📜 Módulo 3: RELATÓRIO":
                 
                 st.markdown("<br>", unsafe_allow_html=True)
                 if st.button("🗑️ Excluir Ficha", key=f"del_proj_{row['id']}", use_container_width=True):
-                    conn = get_db_connection()
-                    conn.cursor().execute("DELETE FROM historico WHERE id=?", (row['id'],))
-                    conn.commit()
-                    conn.close()
+                    supabase.table('historico').delete().eq('id', row['id']).execute()
                     st.success("Ficha removida com sucesso!")
                     time.sleep(1)
                     st.rerun()
