@@ -6,6 +6,51 @@ import json
 import time
 from supabase import create_client, Client
 
+# --- 🔒 BARREIRA DE SEGURANÇA (LOGIN) ---
+def check_password():
+    """Retorna True se o usuário tiver as credenciais corretas."""
+    def password_entered():
+        # Verifica se o usuário existe nos Secrets e se a senha bate
+        if st.session_state["username"] in st.secrets["passwords"] and st.session_state["password"] == st.secrets["passwords"][st.session_state["username"]]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Apaga a senha da memória por segurança
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        st.session_state["password_correct"] = False
+
+    if not st.session_state["password_correct"]:
+        # TELA DE LOGIN VISUAL
+        st.set_page_config(page_title="Acesso Restrito", page_icon="🔒", layout="centered")
+        st.markdown("<br><br><br>", unsafe_allow_html=True)
+        st.markdown("<h1 style='text-align: center; color: #4A90E2;'>🎲 3D Calc Pro</h1>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: gray;'>Gestão Industrial e Precificação (Acesso Restrito)</p>", unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.markdown("""
+            <div style='background-color: #1e1e1e; padding: 30px; border-radius: 10px; border: 1px solid #333;'>
+            """, unsafe_allow_html=True)
+            
+            with st.form("login_form"):
+                st.text_input("E-mail de Acesso", key="username", placeholder="exemplo@email.com")
+                st.text_input("Senha", type="password", key="password", placeholder="••••••••")
+                st.form_submit_button("Entrar no Sistema", on_click=password_entered, use_container_width=True)
+            
+            if st.session_state.get("password_correct") == False:
+                st.error("🚨 Acesso negado. Credenciais inválidas.")
+                
+            st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown("<br><p style='text-align: center; font-size: 13px; color: gray;'>Solicitação de acesso à administração:<br><b>veronica.campos.pt@gmail.com</b></p>", unsafe_allow_html=True)
+            
+        return False
+    return True
+
+# Se a pessoa não logar, o sistema para de rodar exatamente aqui.
+if not check_password():
+    st.stop()
+
 # --- 1. CONFIGURAÇÃO DO SUPABASE ---
 @st.cache_resource
 def init_connection():
@@ -29,12 +74,6 @@ def converter_imagem(upload):
     if upload is not None:
         return base64.b64encode(upload.read()).decode()
     return None
-
-# Inicializando variáveis de sessão (Memória do App)
-if "lista_extras" not in st.session_state:
-    st.session_state.lista_extras = []
-if "markup" not in st.session_state:
-    st.session_state.markup = 100
 
 # Inicializando variáveis de sessão (Memória do App)
 if "lista_extras" not in st.session_state:
