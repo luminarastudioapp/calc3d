@@ -36,8 +36,28 @@ if "lista_extras" not in st.session_state:
 if "markup" not in st.session_state:
     st.session_state.markup = 100
 
+# Inicializando variáveis de sessão (Memória do App)
+if "lista_extras" not in st.session_state:
+    st.session_state.lista_extras = []
+if "markup" not in st.session_state:
+    st.session_state.markup = 100
+if "proj_base" not in st.session_state:
+    st.session_state.proj_base = {}
+
 def set_markup(val):
     st.session_state.markup = val
+
+def carregar_projeto(df, nome_projeto):
+    if nome_projeto != "-- Criar Novo Projeto do Zero --":
+        row = df[df['nome_projeto'] == nome_projeto].iloc[0]
+        st.session_state.proj_base = row.to_dict()
+        try:
+            st.session_state.lista_extras = json.loads(row['custos_extras'])
+        except:
+            st.session_state.lista_extras = []
+    else:
+        st.session_state.proj_base = {}
+        st.session_state.lista_extras = []
 
 # --- 2. ESTILOS VISUAIS E IMPRESSÃO ---
 st.set_page_config(page_title="3D Calc Pro", page_icon="🎲", layout="wide")
@@ -308,9 +328,29 @@ elif menu == "🚀 Módulo 2: NOVO PROJETO":
     
     outros_df = get_df('outros')
     cfg_df = get_df('configuracoes')
+    projetos_salvos = get_df('historico') # Puxando o histórico para servir de catálogo
     
     kwh_cost = float(cfg_df.iloc[0]['kwh']) if not cfg_df.empty else 0.95
     mao_obra_rate = float(cfg_df.iloc[0]['mao_obra']) if not cfg_df.empty else 35.0
+    
+    # --- NOVO: CATÁLOGO DE PROJETOS SALVOS NO TOPO ---
+    st.markdown("### 🔍 Catálogo de Projetos (Templates)")
+    if not projetos_salvos.empty:
+        col_p1, col_p2 = st.columns([4, 1])
+        with col_p1:
+            lista_projs = ["-- Criar Novo Projeto do Zero --"] + projetos_salvos['nome_projeto'].tolist()
+            proj_selecionado = st.selectbox("Selecione um projeto para carregar os dados base:", lista_projs, label_visibility="collapsed")
+        with col_p2:
+            if st.button("📥 Carregar Dados", use_container_width=True):
+                carregar_projeto(projetos_salvos, proj_selecionado)
+                st.rerun()
+    else:
+        st.info("Nenhum projeto salvo no histórico ainda. Crie o seu primeiro abaixo!")
+        
+    st.divider()
+    
+    # Atalho para os dados carregados na memória
+    pb = st.session_state.proj_base
     
     col1, col2 = st.columns([1.2, 1], gap="large")
 
@@ -318,58 +358,71 @@ elif menu == "🚀 Módulo 2: NOVO PROJETO":
         st.subheader("📋 Identidade da Peça")
         
         opcoes_cat_peca = categorias_peca_df['nome'].tolist() if not categorias_peca_df.empty else ["Nenhuma categoria cadastrada"]
-        cat_peca_selecionada = st.selectbox("Categoria da Peça", opcoes_cat_peca)
+        idx_cat_peca = opcoes_cat_peca.index(pb.get('categoria_peca')) if pb.get('categoria_peca') in opcoes_cat_peca else 0
+        cat_peca_selecionada = st.selectbox("Categoria da Peça", opcoes_cat_peca, index=idx_cat_peca)
         
-        proj_name = st.text_input("Nome da Peça", placeholder="Ex: Vaso Geométrico")
+        proj_name = st.text_input("Nome da Peça", value=pb.get('nome_projeto', ''), placeholder="Ex: Vaso Geométrico")
         
-        foto_upload = st.file_uploader("📸 Anexar Foto do Projeto", type=["png", "jpg", "jpeg"])
+        foto_upload = st.file_uploader("📸 Anexar Nova Foto (Opcional)", type=["png", "jpg", "jpeg"])
         foto_b64 = converter_imagem(foto_upload)
-        if foto_upload: st.image(foto_upload, width=150)
-
-        origem = st.radio("Origem do Design", ["Autoral", "Fornecedor"], horizontal=True)
-        link_projeto = ""
-        arquivo_pago = "Não"
-        preco_arquivo = 0.0
+        
+        origem_idx = ["Autoral", "Fornecedor"].index(pb.get('origem', 'Autoral')) if pb.get('origem', 'Autoral') in ["Autoral", "Fornecedor"] else 0
+        origem = st.radio("Origem do Design", ["Autoral", "Fornecedor"], index=origem_idx, horizontal=True)
+        
+        link_projeto = pb.get('link_projeto', '')
+        arquivo_pago = pb.get('arquivo_pago', 'Não')
+        preco_arquivo = float(pb.get('preco_arquivo', 0.0))
         
         if origem == "Fornecedor":
-            link_projeto = st.text_input("🔗 Link do Projeto (Onde baixou/comprou)")
-            arquivo_pago = st.radio("O arquivo (STL/3MF) é pago?", ["Não", "Sim"], horizontal=True)
+            link_projeto = st.text_input("🔗 Link do Projeto (Onde baixou/comprou)", value=link_projeto)
+            arq_pago_idx = ["Não", "Sim"].index(arquivo_pago) if arquivo_pago in ["Não", "Sim"] else 0
+            arquivo_pago = st.radio("O arquivo (STL/3MF) é pago?", ["Não", "Sim"], index=arq_pago_idx, horizontal=True)
             if arquivo_pago == "Sim":
-                preco_arquivo = st.number_input("Preço de Aquisição do Arquivo (R$)", min_value=0.0, step=5.0)
+                preco_arquivo = st.number_input("Preço do Arquivo (R$)", value=preco_arquivo, min_value=0.0, step=5.0)
 
         st.divider()
         st.subheader("⚙️ Parâmetros de Fabricação")
         
-        descricao = st.text_area("Descrição / Observações", placeholder="Ex: Preenchimento giroide 15%.")
+        descricao = st.text_area("Descrição / Observações", value=pb.get('descricao', ''), placeholder="Ex: Preenchimento giroide 15%.")
         
         col_c1, col_c2 = st.columns([1, 2])
-        with col_c1: cores = st.number_input("Qtd. de Cores", min_value=1, value=1, step=1)
+        with col_c1: cores = st.number_input("Qtd. de Cores", min_value=1, value=int(pb.get('cores', 1)), step=1)
         with col_c2:
             st.caption("Dimensões Finais (cm)")
             d1, d2, d3 = st.columns(3)
-            with d1: dim_l = st.number_input("Largura", min_value=0.0)
-            with d2: dim_p = st.number_input("Profund.", min_value=0.0)
-            with d3: dim_a = st.number_input("Altura", min_value=0.0)
+            with d1: dim_l = st.number_input("Largura", value=float(pb.get('dim_largura', 0.0)), min_value=0.0)
+            with d2: dim_p = st.number_input("Profund.", value=float(pb.get('dim_profundidade', 0.0)), min_value=0.0)
+            with d3: dim_a = st.number_input("Altura", value=float(pb.get('dim_altura', 0.0)), min_value=0.0)
         
         col_m1, col_m2 = st.columns(2)
         with col_m1:
             printer_selected = st.selectbox("Impressora", impressoras_df['nome'].tolist() if not impressoras_df.empty else ["Nenhuma"])
             printer_info = impressoras_df[impressoras_df['nome'] == printer_selected].iloc[0] if not impressoras_df.empty else None
         with col_m2:
-            fil_selected = st.selectbox("Filamento", filamentos_df['nome'].tolist() if not filamentos_df.empty else ["Nenhum"])
+            fil_list = filamentos_df['nome'].tolist() if not filamentos_df.empty else ["Nenhum"]
+            idx_fil = fil_list.index(pb.get('material')) if pb.get('material') in fil_list else 0
+            fil_selected = st.selectbox("Filamento", fil_list, index=idx_fil)
             fil_info = filamentos_df[filamentos_df['nome'] == fil_selected].iloc[0] if not filamentos_df.empty else None
             mat_cost_per_kg = float(fil_info['preco_kg']) if fil_info is not None else 0.0
 
+        # Lógica para separar horas e minutos salvos no banco
+        total_h_banco = float(pb.get('tempo_h', 0.0))
+        horas_calc = int(total_h_banco)
+        minutos_calc = int(round((total_h_banco - horas_calc) * 60))
+        
         col_w, col_t1, col_t2 = st.columns([1, 1, 1])
-        with col_w: weight_g = st.number_input("Peso total (g)", min_value=0.0, value=0.0)
-        with col_t1: hours = st.number_input("Tempo (h)", min_value=0, value=0)
-        with col_t2: mins = st.number_input("Tempo (min)", min_value=0, max_value=59, value=0)
+        with col_w: weight_g = st.number_input("Peso total (g)", value=float(pb.get('peso_g', 0.0)), min_value=0.0)
+        with col_t1: hours = st.number_input("Tempo (h)", value=horas_calc, min_value=0)
+        with col_t2: mins = st.number_input("Tempo (min)", value=minutos_calc, min_value=0, max_value=59)
 
-        tempo_mao_obra_min = st.number_input("Sua Mão de Obra Dedicada (Minutos)", min_value=0, value=15, step=5)
+        # Calculando mão de obra baseada no custo salvo vs taxa atual
+        mo_salva_reais = float(pb.get('custo_mao_obra', 0.0))
+        minutos_mo_calc = int((mo_salva_reais / mao_obra_rate) * 60) if mao_obra_rate > 0 else 15
+        tempo_mao_obra_min = st.number_input("Sua Mão de Obra Dedicada (Minutos)", value=minutos_mo_calc if mo_salva_reais > 0 else 15, min_value=0, step=5)
 
         st.divider()
         st.subheader("📦 Custos Extras")
-        st.caption("Adicione itens de montagem, imãs, elásticos ou embalagens.")
+        st.caption("Adicione itens de montagem, imãs, elásticos ou embalagens à vontade.")
         
         if not outros_df.empty:
             outros_dict = {f"{row['nome']} ({row['marca']}) - R$ {row['valor_unit']:.2f}": row.to_dict() for _, row in outros_df.iterrows()}
@@ -394,13 +447,13 @@ elif menu == "🚀 Módulo 2: NOVO PROJETO":
                 st.markdown("**Itens Adicionados:**")
                 for i, ex in enumerate(st.session_state.lista_extras):
                     col_l1, col_l2 = st.columns([8, 2])
-                    col_l1.markdown(f"- {ex['qtd']}x {ex['nome']} (R$ {ex['subtotal']:.2f})")
+                    col_l1.markdown(f"- **{ex['qtd']}x** {ex['nome']} (R$ {ex['subtotal']:.2f})")
                     if col_l2.button("❌", key=f"del_ex_{i}"):
                         st.session_state.lista_extras.pop(i)
                         st.rerun()
                     custo_extras_total += ex['subtotal']
         else:
-            st.info("Cadastre insumos no Módulo 1 para usá-los como custos extras.")
+            st.info("Cadastre insumos na aba 'Outros' do Módulo 1 para usá-los aqui.")
             custo_extras_total = 0.0
 
     # CÁLCULOS BASE
@@ -448,10 +501,13 @@ elif menu == "🚀 Módulo 2: NOVO PROJETO":
             if st.button("💾 Salvar Precificação Completa", type="primary", use_container_width=True):
                 data_hoje = datetime.now().strftime("%d/%m/%Y %H:%M")
                 
+                # Se não enviou foto nova, tenta manter a foto antiga do projeto base (se houver)
+                foto_final = foto_b64 if foto_b64 else pb.get('foto_principal')
+                
                 supabase.table('historico').insert({
                     'nome_projeto': proj_name, 'material': fil_selected, 'peso_g': weight_g, 
                     'tempo_h': total_hours, 'custo_total': total_cost_prod, 'preco_venda': preco_venda_final, 
-                    'data': data_hoje, 'memoria_calculo': memoria_calc_str, 'foto_principal': foto_b64, 
+                    'data': data_hoje, 'memoria_calculo': memoria_calc_str, 'foto_principal': foto_final, 
                     'origem': origem, 'link_projeto': link_projeto, 'custo_mao_obra': cost_mao_obra,
                     'arquivo_pago': arquivo_pago, 'preco_arquivo': preco_arquivo, 'descricao': descricao, 
                     'cores': cores, 'dim_largura': dim_l, 'dim_profundidade': dim_p, 'dim_altura': dim_a,
@@ -459,7 +515,9 @@ elif menu == "🚀 Módulo 2: NOVO PROJETO":
                     'markup_aplicado': st.session_state.markup
                 }).execute()
                 
+                # Limpa a memória para o próximo projeto
                 st.session_state.lista_extras = [] 
+                st.session_state.proj_base = {}
                 st.success("✅ Projeto salvo com a precificação completa!")
                 time.sleep(1.5)
                 st.rerun()
