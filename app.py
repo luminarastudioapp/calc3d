@@ -189,8 +189,13 @@ if menu == "⚙️ Módulo 1: CADASTROS":
             display_out.rename(columns={'categoria': 'Categoria', 'nome': 'Nome', 'marca': 'Marca/Modelo', 'valor_unit': 'Valor Unitário (R$)', 'especificacoes': 'Especificações'}, inplace=True)
             st.dataframe(display_out[['id', 'Categoria', 'Nome', 'Marca/Modelo', 'Valor Unitário (R$)', 'Especificações']], use_container_width=True, hide_index=True)
 
-        cat_insumos_df = supabase.table('categorias').select('nome').eq('tipo_categoria', 'Insumo').execute()
-        categorias_insumo = [c['nome'] for c in cat_insumos_df.data] if cat_insumos_df.data else ["Cadastre uma categoria primeiro"]
+        cat_df_seguro = get_df('categorias')
+        if not cat_df_seguro.empty:
+            categorias_insumo = cat_df_seguro[cat_df_seguro['tipo_categoria'] == 'Insumo']['nome'].tolist()
+            if not categorias_insumo: 
+                categorias_insumo = ["Cadastre uma categoria primeiro"]
+        else:
+            categorias_insumo = ["Cadastre uma categoria primeiro"]
 
         acao_out = st.radio("Ação Outros", ["Novo", "Editar / Excluir"], horizontal=True, label_visibility="collapsed", key="rad_out")
 
