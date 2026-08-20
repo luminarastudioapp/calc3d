@@ -361,50 +361,50 @@ if menu == "⚙️ Módulo 1: CADASTROS":
                     time.sleep(1)
                     st.rerun()
 
-    # --- CRUD: CATÁLOGO DE PEÇAS (VISUALIZAÇÃO E GESTÃO) ---
-        with tab_pecas:
-            pecas_df = get_df('historico')
+# --- CRUD: CATÁLOGO DE PEÇAS (VISUALIZAÇÃO E GESTÃO) ---
+    with tab_pecas:
+        pecas_df = get_df('historico')
+        
+        if not pecas_df.empty:
+            # Preparando a tabela para uma visualização limpa e profissional
+            display_pecas = pecas_df[['id', 'categoria_peca', 'nome_projeto', 'material', 'custo_total', 'preco_venda']].copy()
+            display_pecas.rename(columns={
+                'categoria_peca': 'Categoria', 
+                'nome_projeto': 'Nome da Peça', 
+                'material': 'Filamento', 
+                'custo_total': 'Custo (R$)', 
+                'preco_venda': 'Venda (R$)'
+            }, inplace=True)
             
-            if not pecas_df.empty:
-                # Preparando a tabela para uma visualização limpa e profissional
-                display_pecas = pecas_df[['id', 'categoria_peca', 'nome_projeto', 'material', 'custo_total', 'preco_venda']].copy()
-                display_pecas.rename(columns={
-                    'categoria_peca': 'Categoria', 
-                    'nome_projeto': 'Nome da Peça', 
-                    'material': 'Filamento', 
-                    'custo_total': 'Custo (R$)', 
-                    'preco_venda': 'Venda (R$)'
-                }, inplace=True)
+            st.dataframe(display_pecas.style.format({
+                "Custo (R$)": "R$ {:.2f}", 
+                "Venda (R$)": "R$ {:.2f}"
+            }), use_container_width=True, hide_index=True)
+
+            acao_peca = st.radio("Ação Peça", ["Excluir Peça", "Editar Peça"], horizontal=True, label_visibility="collapsed", key="rad_pecas")
+            
+            if acao_peca == "Excluir Peça":
+                peca_del = st.selectbox("Selecione o projeto para remover do catálogo:", pecas_df['nome_projeto'].tolist())
+                peca_id = int(pecas_df[pecas_df['nome_projeto'] == peca_del].iloc[0]['id'])
                 
-                st.dataframe(display_pecas.style.format({
-                    "Custo (R$)": "R$ {:.2f}", 
-                    "Venda (R$)": "R$ {:.2f}"
-                }), use_container_width=True, hide_index=True)
-    
-                acao_peca = st.radio("Ação Peça", ["Excluir Peça", "Editar Peça"], horizontal=True, label_visibility="collapsed", key="rad_pecas")
-                
-                if acao_peca == "Excluir Peça":
-                    peca_del = st.selectbox("Selecione o projeto para remover do catálogo:", pecas_df['nome_projeto'].tolist())
-                    peca_id = int(pecas_df[pecas_df['nome_projeto'] == peca_del].iloc[0]['id'])
+                if st.button("🗑️ Confirmar Exclusão", use_container_width=True):
+                    supabase.table('historico').delete().eq('id', peca_id).execute()
+                    st.success("✅ Peça excluída definitivamente do sistema!")
+                    time.sleep(1)
+                    st.rerun()
                     
-                    if st.button("🗑️ Confirmar Exclusão", use_container_width=True):
-                        supabase.table('historico').delete().eq('id', peca_id).execute()
-                        st.success("✅ Peça excluída definitivamente do sistema!")
-                        time.sleep(1)
-                        st.rerun()
-                        
-                   elif acao_peca == "Editar Peça":
-                        peca_edit = st.selectbox("Selecione o projeto para editar:", pecas_df['nome_projeto'].tolist(), key="sel_edit_peca")
-                            
-                        if st.button("✏️ Enviar para Edição (Módulo 2)", type="primary", use_container_width=True):
-                            # 1. Carrega os dados da peça na memória
-                            carregar_projeto(pecas_df, peca_edit)
-                            # 2. Força o menu a mudar para o Módulo 2
-                            st.session_state.menu_selecionado = "🚀 Módulo 2: NOVO PROJETO"
-                            # 3. Dá um refresh automático
-                             st.rerun()
-                    else:
-                        st.info("O seu catálogo está vazio. Utilize o Módulo 2 para criar e precificar as suas primeiras peças!")
+            elif acao_peca == "Editar Peça":
+                peca_edit = st.selectbox("Selecione o projeto para editar:", pecas_df['nome_projeto'].tolist(), key="sel_edit_peca")
+                
+                if st.button("✏️ Enviar para Edição (Módulo 2)", type="primary", use_container_width=True):
+                    # 1. Carrega os dados da peça na memória
+                    carregar_projeto(pecas_df, peca_edit)
+                    # 2. Força o menu a mudar para o Módulo 2
+                    st.session_state.menu_selecionado = "🚀 Módulo 2: NOVO PROJETO"
+                    # 3. Dá um refresh automático
+                    st.rerun()
+        else:
+            st.info("O seu catálogo está vazio. Utilize o Módulo 2 para criar e precificar as suas primeiras peças!")
 
 
 # =====================================================================
