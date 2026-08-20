@@ -6,6 +6,9 @@ import json
 import time
 from supabase import create_client, Client
 
+# A configuração da página DEVE ser a primeira coisa aqui no topo!
+st.set_page_config(page_title="3D Calc Pro", page_icon="🎲", layout="wide")
+
 # --- 🔒 BARREIRA DE SEGURANÇA (LOGIN) ---
 def check_password():
     """Retorna True se o usuário tiver as credenciais corretas."""
@@ -21,11 +24,8 @@ def check_password():
         st.session_state["password_correct"] = False
 
     if not st.session_state["password_correct"]:
-        # TELA DE LOGIN VISUAL
-        st.set_page_config(page_title="Acesso Restrito", page_icon="🔒", layout="centered")
+        # TELA DE LOGIN VISUAL (Removido o set_page_config duplicado daqui)
         st.markdown("<br><br><br>", unsafe_allow_html=True)
-        st.markdown("<h1 style='text-align: center; color: #4A90E2;'>🎲 3D Calc Pro</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: gray;'>Gestão Industrial e Precificação (Acesso Restrito)</p>", unsafe_allow_html=True)
         
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
