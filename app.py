@@ -79,11 +79,20 @@ st.markdown("""
 
 # --- 3. NAVEGAÇÃO DOS MÓDULOS ---
 st.sidebar.title("🎲 3D Calc Pro")
-menu = st.sidebar.radio("Módulos do Sistema", [
-    "⚙️ Módulo 1: CADASTROS", 
-    "🚀 Módulo 2: NOVO PROJETO", 
-    "📜 Módulo 3: RELATÓRIO"
-])
+
+# Criando a inteligência que permite mudar o menu via código
+if "menu_selecionado" not in st.session_state:
+    st.session_state.menu_selecionado = "⚙️ Módulo 1: CADASTROS"
+
+menu = st.sidebar.radio(
+    "Módulos do Sistema", 
+    [
+        "⚙️ Módulo 1: CADASTROS", 
+        "🚀 Módulo 2: NOVO PROJETO", 
+        "📜 Módulo 3: RELATÓRIO"
+    ],
+    key="menu_selecionado" # Essa é a chave que vamos hackear para pular de tela
+)
 
 # =====================================================================
 # MÓDULO 1: CADASTROS 
@@ -346,9 +355,17 @@ if menu == "⚙️ Módulo 1: CADASTROS":
                         st.rerun()
                         
                 elif acao_peca == "Editar Peça":
-                    st.info("💡 **Inteligência do Sistema:** A edição de peças exige recálculo financeiro (peso, tempo, insumos extras e margem de lucro). Para editar com segurança, vá até o **🚀 Módulo 2: NOVO PROJETO**, selecione a peça no menu superior, clique em 'Carregar Dados' e faça a atualização por lá.")
-            else:
-                st.info("O seu catálogo está vazio. Utilize o Módulo 2 para criar e precificar as suas primeiras peças!")
+                peca_edit = st.selectbox("Selecione o projeto para editar:", pecas_df['nome_projeto'].tolist(), key="sel_edit_peca")
+                
+                if st.button("✏️ Enviar para Edição (Módulo 2)", type="primary", use_container_width=True):
+                    # 1. Carrega os dados da peça na memória
+                    carregar_projeto(pecas_df, peca_edit)
+                    # 2. Força o menu a mudar para o Módulo 2
+                    st.session_state.menu_selecionado = "🚀 Módulo 2: NOVO PROJETO"
+                    # 3. Dá um refresh automático
+                    st.rerun()
+        else:
+            st.info("O seu catálogo está vazio. Utilize o Módulo 2 para criar e precificar as suas primeiras peças!")
 
 
 # =====================================================================
