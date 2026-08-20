@@ -90,7 +90,7 @@ menu = st.sidebar.radio("Módulos do Sistema", [
 # =====================================================================
 if menu == "⚙️ Módulo 1: CADASTROS":
     st.title("⚙️ Cadastros e Custos da Gráfica")
-    tab_cfg, tab_cat, tab_fil, tab_out, tab_imp = st.tabs(["💵 Custos Fixos", "🏷️ Categorias", "🧵 Filamentos", "📦 Outros", "🖨️ Impressoras"])
+    tab_cfg, tab_cat, tab_fil, tab_out, tab_imp, tab_pecas = st.tabs(["💵 Custos Fixos", "🏷️ Categorias", "🧵 Filamentos", "📦 Outros", "🖨️ Impressoras", "🧩 Catálogo de Peças"])
     
     # --- CONFIGURAÇÕES GERAIS ---
     with tab_cfg:
@@ -312,6 +312,43 @@ if menu == "⚙️ Módulo 1: CADASTROS":
                     st.success("✅ Excluído!")
                     time.sleep(1)
                     st.rerun()
+
+    # --- CRUD: CATÁLOGO DE PEÇAS (VISUALIZAÇÃO E GESTÃO) ---
+        with tab_pecas:
+            pecas_df = get_df('historico')
+            
+            if not pecas_df.empty:
+                # Preparando a tabela para uma visualização limpa e profissional
+                display_pecas = pecas_df[['id', 'categoria_peca', 'nome_projeto', 'material', 'custo_total', 'preco_venda']].copy()
+                display_pecas.rename(columns={
+                    'categoria_peca': 'Categoria', 
+                    'nome_projeto': 'Nome da Peça', 
+                    'material': 'Filamento', 
+                    'custo_total': 'Custo (R$)', 
+                    'preco_venda': 'Venda (R$)'
+                }, inplace=True)
+                
+                st.dataframe(display_pecas.style.format({
+                    "Custo (R$)": "R$ {:.2f}", 
+                    "Venda (R$)": "R$ {:.2f}"
+                }), use_container_width=True, hide_index=True)
+    
+                acao_peca = st.radio("Ação Peça", ["Excluir Peça", "Editar Peça"], horizontal=True, label_visibility="collapsed", key="rad_pecas")
+                
+                if acao_peca == "Excluir Peça":
+                    peca_del = st.selectbox("Selecione o projeto para remover do catálogo:", pecas_df['nome_projeto'].tolist())
+                    peca_id = int(pecas_df[pecas_df['nome_projeto'] == peca_del].iloc[0]['id'])
+                    
+                    if st.button("🗑️ Confirmar Exclusão", use_container_width=True):
+                        supabase.table('historico').delete().eq('id', peca_id).execute()
+                        st.success("✅ Peça excluída definitivamente do sistema!")
+                        time.sleep(1)
+                        st.rerun()
+                        
+                elif acao_peca == "Editar Peça":
+                    st.info("💡 **Inteligência do Sistema:** A edição de peças exige recálculo financeiro (peso, tempo, insumos extras e margem de lucro). Para editar com segurança, vá até o **🚀 Módulo 2: NOVO PROJETO**, selecione a peça no menu superior, clique em 'Carregar Dados' e faça a atualização por lá.")
+            else:
+                st.info("O seu catálogo está vazio. Utilize o Módulo 2 para criar e precificar as suas primeiras peças!")
 
 
 # =====================================================================
