@@ -396,15 +396,12 @@ if menu == "⚙️ Módulo 1: CADASTROS":
             elif acao_peca == "Editar Peça":
                 peca_edit = st.selectbox("Selecione o projeto para editar:", pecas_df['nome_projeto'].tolist(), key="sel_edit_peca")
                 
-                if st.button("✏️ Enviar para Edição (Módulo 2)", type="primary", use_container_width=True):
-                    # 1. Carrega os dados da peça na memória
+                # Inteligência de Callback: executa nos bastidores antes da tela piscar
+                def preparar_edicao():
                     carregar_projeto(pecas_df, peca_edit)
-                    # 2. Força o menu a mudar para o Módulo 2
                     st.session_state.menu_selecionado = "🚀 Módulo 2: NOVO PROJETO"
-                    # 3. Dá um refresh automático
-                    st.rerun()
-        else:
-            st.info("O seu catálogo está vazio. Utilize o Módulo 2 para criar e precificar as suas primeiras peças!")
+                
+                st.button("✏️ Enviar para Edição (Módulo 2)", type="primary", use_container_width=True, on_click=preparar_edicao)
 
 
 # =====================================================================
