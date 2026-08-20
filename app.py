@@ -498,13 +498,26 @@ elif menu == "🚀 Módulo 2: NOVO PROJETO":
 
             memoria_calc_str = f"Mat: R${cost_mat:.2f} | Energ: R${cost_energy:.2f} | Deprec: R${cost_depr:.2f} | MO: R${cost_mao_obra:.2f} | Extras: R${custo_extras_total:.2f} | Markup: {st.session_state.markup}%"
 
-            if st.button("💾 Salvar Precificação Completa", type="primary", use_container_width=True):
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            # --- NOVA INTELIGÊNCIA: ATUALIZAR VS DUPLICAR ---
+            id_projeto_atual = pb.get('id')
+            
+            if id_projeto_atual:
+                col_b1, col_b2 = st.columns(2)
+                with col_b1:
+                    btn_atualizar = st.button("🔄 Atualizar Peça Existente", type="primary", use_container_width=True)
+                with col_b2:
+                    btn_novo = st.button("📄 Salvar como Nova Peça (Cópia)", use_container_width=True)
+            else:
+                btn_atualizar = False
+                btn_novo = st.button("💾 Salvar Precificação Completa", type="primary", use_container_width=True)
+
+            if btn_atualizar or btn_novo:
                 data_hoje = datetime.now().strftime("%d/%m/%Y %H:%M")
-                
-                # Se não enviou foto nova, tenta manter a foto antiga do projeto base (se houver)
                 foto_final = foto_b64 if foto_b64 else pb.get('foto_principal')
                 
-                supabase.table('historico').insert({
+                dados_salvar = {
                     'nome_projeto': proj_name, 'material': fil_selected, 'peso_g': weight_g, 
                     'tempo_h': total_hours, 'custo_total': total_cost_prod, 'preco_venda': preco_venda_final, 
                     'data': data_hoje, 'memoria_calculo': memoria_calc_str, 'foto_principal': foto_final, 
@@ -513,12 +526,18 @@ elif menu == "🚀 Módulo 2: NOVO PROJETO":
                     'cores': cores, 'dim_largura': dim_l, 'dim_profundidade': dim_p, 'dim_altura': dim_a,
                     'categoria_peca': cat_peca_selecionada, 'custos_extras': json.dumps(st.session_state.lista_extras), 
                     'markup_aplicado': st.session_state.markup
-                }).execute()
+                }
+                
+                if btn_atualizar:
+                    supabase.table('historico').update(dados_salvar).eq('id', id_projeto_atual).execute()
+                    st.success("✅ Peça atualizada com sucesso no catálogo!")
+                else:
+                    supabase.table('historico').insert(dados_salvar).execute()
+                    st.success("✅ Novo projeto salvo com sucesso!")
                 
                 # Limpa a memória para o próximo projeto
                 st.session_state.lista_extras = [] 
                 st.session_state.proj_base = {}
-                st.success("✅ Projeto salvo com a precificação completa!")
                 time.sleep(1.5)
                 st.rerun()
         else:
