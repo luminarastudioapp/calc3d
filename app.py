@@ -128,8 +128,8 @@ menu = st.sidebar.radio(
     [
         "⚙️ Módulo 1: CADASTROS", 
         "🚀 Módulo 2: NOVO PROJETO", 
-        "📜 Módulo 3: RELATÓRIO",
-        "💰 Módulo 4: VENDAS",
+        "📜 Módulo 3: VENDAS",
+        "💰 Módulo 4: RELATÓRIO",
         "💾 Módulo 5: BACKUP"
     ],
     key="menu_selecionado" # Essa é a chave que vamos hackear para pular de tela
