@@ -421,6 +421,7 @@ if menu == "⚙️ Módulo 1: CADASTROS":
 
 # --- GESTÃO DE ESTOQUE (NOVO) ---
     # --- GESTÃO DE ESTOQUE ---
+    # --- GESTÃO DE ESTOQUE ---
     with tab_est:
         st.subheader("📦 Visão Geral do Estoque")
         fil_df = get_df('filamentos')
@@ -448,42 +449,54 @@ if menu == "⚙️ Módulo 1: CADASTROS":
                 st.info("Sem insumos.")
                 
         st.divider()
-        st.subheader("⚖️ Atualização Manual")
-        st.caption("Alimente seu estoque inicial aqui. As vendas concluídas descontam automaticamente.")
+        st.subheader("⚖️ Atualização Manual Inteligente")
+        st.caption("Selecione o item na lista abaixo para habilitar o formulário de edição de estoque.")
         
         col_est1, col_est2 = st.columns(2, gap="large")
         
         with col_est1:
-            st.markdown("**🧵 Ajuste de Filamentos (g)**")
+            st.markdown("**🧵 Ajuste de Filamentos**")
             if not fil_df.empty:
-                for idx, row in fil_df.iterrows():
-                    peso_atual = float(row.get('peso_estoque_g', 0))
-                    nome_comp = f"{row.get('marca', '')} {row['nome']} {row.get('cor', '')}".strip()
-                    ce1, ce2 = st.columns([3, 1])
-                    with ce1: novo_peso = st.number_input(f"{nome_comp}", value=peso_atual, step=50.0, key=f"est_fil_{row['id']}")
-                    with ce2: 
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        if st.button("💾", key=f"btn_fil_{row['id']}", help="Salvar"):
-                            supabase.table('filamentos').update({'peso_estoque_g': novo_peso}).eq('id', row['id']).execute()
-                            st.success("Salvo!")
-                            time.sleep(0.5)
-                            st.rerun()
+                # Cria a lista compilada para a seleção
+                fil_df['display'] = fil_df.apply(lambda x: f"{x.get('marca', '')} {x['nome']} {x.get('cor', '')}".strip(), axis=1)
+                fil_edit_sel = st.selectbox("Selecione o Filamento:", fil_df['display'].tolist(), key="sel_est_fil")
+                
+                # Puxa os dados exatos do selecionado para o formulário
+                row_fil = fil_df[fil_df['display'] == fil_edit_sel].iloc[0]
+                peso_atual = float(row_fil.get('peso_estoque_g', 0))
+                
+                ce1, ce2 = st.columns([3, 1])
+                with ce1: 
+                    novo_peso = st.number_input("Estoque Físico (g)", value=peso_atual, step=50.0, key="inp_est_fil")
+                with ce2: 
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("💾 Salvar", key="btn_est_fil", use_container_width=True):
+                        supabase.table('filamentos').update({'peso_estoque_g': novo_peso}).eq('id', int(row_fil['id'])).execute()
+                        st.success("Atualizado!")
+                        time.sleep(0.5)
+                        st.rerun()
                             
         with col_est2:
-            st.markdown("**📦 Ajuste de Insumos (Un)**")
+            st.markdown("**📦 Ajuste de Insumos**")
             if not out_df.empty:
-                for idx, row in out_df.iterrows():
-                    qtd_atual = int(row.get('qtd_estoque', 0))
-                    nome_out = f"{row.get('marca', '')} - {row['nome']}".strip(' -')
-                    ce1, ce2 = st.columns([3, 1])
-                    with ce1: nova_qtd = st.number_input(f"{nome_out}", value=qtd_atual, step=1, key=f"est_out_{row['id']}")
-                    with ce2:
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        if st.button("💾", key=f"btn_out_{row['id']}", help="Salvar"):
-                            supabase.table('outros').update({'qtd_estoque': nova_qtd}).eq('id', row['id']).execute()
-                            st.success("Salvo!")
-                            time.sleep(0.5)
-                            st.rerun()
+                # Cria a lista compilada para a seleção
+                out_df['display'] = out_df.apply(lambda x: f"{x.get('marca', '')} - {x['nome']}".strip(' -'), axis=1)
+                out_edit_sel = st.selectbox("Selecione o Insumo:", out_df['display'].tolist(), key="sel_est_out")
+                
+                # Puxa os dados exatos do selecionado para o formulário
+                row_out = out_df[out_df['display'] == out_edit_sel].iloc[0]
+                qtd_atual = int(row_out.get('qtd_estoque', 0))
+                
+                ce1, ce2 = st.columns([3, 1])
+                with ce1: 
+                    nova_qtd = st.number_input("Estoque Físico (Un)", value=qtd_atual, step=1, key="inp_est_out")
+                with ce2:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("💾 Salvar", key="btn_est_out", use_container_width=True):
+                        supabase.table('outros').update({'qtd_estoque': nova_qtd}).eq('id', int(row_out['id'])).execute()
+                        st.success("Atualizado!")
+                        time.sleep(0.5)
+                        st.rerun()
 
 # =====================================================================
 # MÓDULO 2: NOVO PROJETO 
