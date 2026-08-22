@@ -116,24 +116,31 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. NAVEGAÇÃO DOS MÓDULOS ---
+# --- 3. NAVEGAÇÃO DOS MÓDULOS (ARQUITETURA BLINDADA) ---
 st.sidebar.title("🎲 3D Calc Pro")
 
-# Criando a inteligência que permite mudar o menu via código
+# 1. Declarando as Rotas (Constantes)
+ROTA_CADASTROS = "⚙️ Módulo 1: CADASTROS"
+ROTA_PROJETO = "🚀 Módulo 2: NOVO PROJETO"
+ROTA_VENDAS = "💰 Módulo 3: VENDAS"
+ROTA_RELATORIO = "📜 Módulo 4: RELATÓRIO"
+ROTA_BACKUP = "💾 Módulo 5: BACKUP"
+
 if "menu_selecionado" not in st.session_state:
-    st.session_state.menu_selecionado = "⚙️ Módulo 1: CADASTROS"
+    st.session_state.menu_selecionado = ROTA_CADASTROS
 
 menu = st.sidebar.radio(
     "Módulos do Sistema", 
-    [
-        "⚙️ Módulo 1: CADASTROS", 
-        "🚀 Módulo 2: NOVO PROJETO", 
-        "📜 Módulo 3: VENDAS",
-        "💰 Módulo 4: RELATÓRIO",
-        "💾 Módulo 5: BACKUP"
-    ],
-    key="menu_selecionado" # Essa é a chave que vamos hackear para pular de tela
+    [ROTA_CADASTROS, ROTA_PROJETO, ROTA_VENDAS, ROTA_RELATORIO, ROTA_BACKUP],
+    key="menu_selecionado"
 )
+
+# =====================================================================
+# MÓDULO 1: CADASTROS 
+# =====================================================================
+if menu == ROTA_CADASTROS:
+    st.title("⚙️ Cadastros e Custos da Gráfica")
+    # ... (o resto do seu código do módulo 1 continua aqui)
 
 # =====================================================================
 # MÓDULO 1: CADASTROS 
@@ -523,7 +530,7 @@ if menu == "⚙️ Módulo 1: CADASTROS":
 # =====================================================================
 # MÓDULO 2: NOVO PROJETO 
 # =====================================================================
-elif menu == "🚀 Módulo 2: NOVO PROJETO":
+elif menu == ROTA_PROJETO:  
     st.title("🚀 Criação e Precificação de Projeto")
     
     filamentos_df = get_df('filamentos')
@@ -765,7 +772,7 @@ elif menu == "🚀 Módulo 2: NOVO PROJETO":
 # =====================================================================
 # MÓDULO 3: VENDAS E MARKETPLACES
 # =====================================================================
-elif menu == "💰 Módulo 3: VENDAS":
+elif menu == ROTA_VENDAS:
     st.title("💰 Gestão de Vendas e Marketplaces")
     st.markdown("Controle de pedidos, simulação de taxas de plataformas e funil de status.")
 
@@ -940,7 +947,7 @@ elif menu == "💰 Módulo 3: VENDAS":
 # =====================================================================
 # MÓDULO 4: RELATÓRIO 
 # =====================================================================
-elif menu == "📜 Módulo 4: RELATÓRIO":
+elif menu == ROTA_RELATORIO:
     st.title("📜 Vitrine de Produção e Venda")
     
     st.markdown("""
@@ -1019,7 +1026,7 @@ elif menu == "📜 Módulo 4: RELATÓRIO":
 # =====================================================================
 # MÓDULO 5: BACKUP E EXPORTAÇÃO
 # =====================================================================
-elif menu == "💾 Módulo 5: BACKUP":
+elif menu == ROTA_BACKUP:
     st.title("💾 Backup de Segurança do Sistema")
     st.markdown("A sua base de dados principal está **blindada e operando na nuvem** pelo Supabase. Mas ter uma cópia física local é a regra de ouro da gestão industrial.")
     
