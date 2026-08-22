@@ -606,10 +606,9 @@ elif menu == "🚀 Módulo 2: NOVO PROJETO":
             printer_selected = st.selectbox("Impressora", impressoras_df['nome'].tolist() if not impressoras_df.empty else ["Nenhuma"])
             printer_info = impressoras_df[impressoras_df['nome'] == printer_selected].iloc[0] if not impressoras_df.empty else None
         with col_m2:
-            printer_selected = st.selectbox("Impressora", impressoras_df['nome'].tolist() if not impressoras_df.empty else ["Nenhuma"])
+            printer_selected = st.selectbox("Impressora", impressoras_df['nome'].tolist() if not impressoras_df.empty else ["Nenhuma"], key="sel_imp_m2")
             printer_info = impressoras_df[impressoras_df['nome'] == printer_selected].iloc[0] if not impressoras_df.empty else None
             
-            # Nova lógica da lista compilada para Filamentos
             if not filamentos_df.empty:
                 filamentos_df['display'] = filamentos_df.apply(lambda x: f"{x.get('marca', 'S/N')} - {x['nome']} - {x.get('cor', 'S/N')}", axis=1)
                 fil_list = filamentos_df['display'].tolist()
@@ -617,7 +616,7 @@ elif menu == "🚀 Módulo 2: NOVO PROJETO":
                 fil_list = ["Nenhum"]
                 
             idx_fil = fil_list.index(pb.get('material')) if pb.get('material') in fil_list else 0
-            fil_selected = st.selectbox("Filamento", fil_list, index=idx_fil)
+            fil_selected = st.selectbox("Filamento", fil_list, index=idx_fil, key="sel_fil_m2")
             
             if not filamentos_df.empty:
                 fil_info = filamentos_df[filamentos_df['display'] == fil_selected].iloc[0]
@@ -764,9 +763,183 @@ elif menu == "🚀 Módulo 2: NOVO PROJETO":
         else:
             st.info("👈 Preencha os parâmetros e adicione o peso da peça para gerar o cálculo.")
 
+# =====================================================================
+# MÓDULO 3: VENDAS E MARKETPLACES
+# =====================================================================
+elif menu == "💰 Módulo 4: VENDAS":
+    st.title("💰 Gestão de Vendas e Marketplaces")
+    st.markdown("Controle de pedidos, simulação de taxas de plataformas e funil de status.")
+
+    tab_nova_venda, tab_painel = st.tabs(["🛒 Lançar Nova Venda", "📊 Painel de Pedidos"])
+
+    with tab_nova_venda:
+        projetos_df = get_df('historico')
+
+        if not projetos_df.empty:
+            col_v1, col_v2 = st.columns([1, 1.5])
+
+            with col_v1:
+                st.subheader("1. Dados do Pedido")
+                nome_cliente = st.text_input("Nome do Cliente / Comprador")
+                canal_venda = st.radio("Canal de Venda", ["Venda Direta (WhatsApp/Balcão)", "Shopee", "Mercado Livre"])
+                status_pedido = st.selectbox("Status Atual", ["Aguardando Pagamento", "Em Produção", "Pronto / Enviado", "Concluído"])
+                obs_venda = st.text_area("Observações (Opcional)", placeholder="Ex: Desconto de 10%, cliente pediu laço rosa extra...")
+
+            with col_v2:
+                st.subheader("2. Produto e Precificação Dinâmica")
+                proj_selecionado = st.selectbox("Selecione a Peça", projetos_df['nome_projeto'].tolist())
+                peca_dados = projetos_df[projetos_df['nome_projeto'] == proj_selecionado].iloc[0]
+                
+                qtd_vendida = st.number_input("Quantidade Vendida", min_value=1, value=1, step=1)
+                
+                custo_fabrica_unit = float(peca_dados['custo_total'])
+                preco_sugerido_unit = float(peca_dados['preco_venda'])
+
+                st.markdown(f"**Custo de Produção (UNIDADE):** R$ {custo_fabrica_unit:.2f}")
+
+                # Dinâmica de Taxas
+                taxa_percentual = 0.0
+                taxa_fixa = 0.0
+
+                if canal_venda == "Shopee":
+                    st.caption("Ajuste as taxas (Ex: 14% ou 20% + Taxa Fixa por unidade)")
+                    c_tx1, c_tx2 = st.columns(2)
+                    with c_tx1: taxa_percentual = st.number_input("Comissão Shopee (%)", value=20.0, step=1.0)
+                    with c_tx2: taxa_fixa = st.number_input("Taxa Fixa (R$)", value=4.0, step=0.5)
+                elif canal_venda == "Mercado Livre":
+                    st.caption("Ajuste as taxas conforme o anúncio")
+                    c_tx1, c_tx2 = st.columns(2)
+                    with c_tx1: taxa_percentual = st.number_input("Comissão ML (%)", value=14.0, step=1.0)
+                    with c_tx2: taxa_fixa = st.number_input("Custo Fixo ML (R$)", value=6.0, step=0.5)
+
+                preco_final_unit = st.number_input(
+                    "Preço Final Cobrado (POR UNIDADE - R$)", 
+                    value=preco_sugerido_unit, 
+                    step=5.0
+                )
+
+                # Cálculos do Lucro Real Totais (Multiplicando pela Quantidade)
+                receita_bruta = preco_final_unit * qtd_vendida
+                custo_total_fabrica = custo_fabrica_unit * qtd_vendida
+                valor_descontado_taxas = (receita_bruta * (taxa_percentual / 100)) + (taxa_fixa * qtd_vendida)
+                
+                receita_liquida = receita_bruta - valor_descontado_taxas
+                lucro_real = receita_liquida - custo_total_fabrica
+                margem_real = (lucro_real / receita_bruta) * 100 if receita_bruta > 0 else 0
+
+                st.markdown("---")
+                res_col1, res_col2, res_col3 = st.columns(3)
+                res_col1.metric("Você Recebe (Líquido)", f"R$ {receita_liquida:.2f}", f"- R$ {valor_descontado_taxas:.2f} (Taxas)", delta_color="inverse")
+                res_col2.metric("Lucro Limpo Total", f"R$ {lucro_real:.2f}", f"{margem_real:.1f}% Margem")
+                res_col3.metric("Custo Total", f"R$ {custo_total_fabrica:.2f}")
+
+                if st.button("✅ Registrar Venda", type="primary", use_container_width=True):
+                    if nome_cliente:
+                        supabase.table('vendas').insert({
+                            'cliente': nome_cliente,
+                            'nome_projeto': proj_selecionado,
+                            'canal': canal_venda,
+                            'valor_venda': receita_bruta, 
+                            'taxa_plataforma': valor_descontado_taxas,
+                            'custo_producao': custo_total_fabrica,
+                            'lucro_liquido': lucro_real,
+                            'status': status_pedido,
+                            'quantidade': qtd_vendida,
+                            'observacao': obs_venda
+                        }).execute()
+                        st.success("✅ Venda registrada com sucesso no funil!")
+                        time.sleep(1.5)
+                        st.rerun()
+                    else:
+                        st.error("🚨 Informe o nome do cliente/comprador antes de salvar.")
+        else:
+            st.info("Você precisa ter projetos salvos no Histórico (Módulo 2) para poder vender.")
+
+    with tab_painel:
+        vendas_df = get_df('vendas')
+        if not vendas_df.empty:
+            st.subheader("Funil de Pedidos Abertos e Concluídos")
+            
+            disp_vendas = vendas_df[['id', 'status', 'cliente', 'nome_projeto', 'quantidade', 'canal', 'lucro_liquido', 'created_at']].copy()
+            disp_vendas.rename(columns={'status': 'Status', 'cliente': 'Cliente', 'nome_projeto': 'Peça', 'quantidade': 'Qtd', 'canal': 'Canal', 'lucro_liquido': 'Lucro (R$)'}, inplace=True)
+            
+            disp_vendas['Data'] = pd.to_datetime(disp_vendas['created_at']).dt.strftime('%d/%m/%Y')
+            disp_vendas = disp_vendas.drop(columns=['created_at'])
+
+            cols = ['id', 'Data'] + [col for col in disp_vendas.columns if col not in ['id', 'Data']]
+            disp_vendas = disp_vendas[cols]
+
+            st.dataframe(disp_vendas.style.format({"Lucro (R$)": "R$ {:.2f}"}), use_container_width=True, hide_index=True)
+
+            st.divider()
+            st.markdown("**Atualizar Status do Pedido:**")
+            col_a1, col_a2, col_a3 = st.columns([2, 2, 1])
+            with col_a1:
+                venda_id_atualizar = st.selectbox("Selecione o ID do Pedido", disp_vendas['id'].tolist())
+            with col_a2:
+                novo_status = st.selectbox("Mover para:", ["Aguardando Pagamento", "Em Produção", "Pronto / Enviado", "Concluído"], key="st_update")
+            with col_a3:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("🔄 Atualizar", use_container_width=True):
+                    venda_antiga = vendas_df[vendas_df['id'] == venda_id_atualizar].iloc[0]
+                    status_antigo = venda_antiga['status']
+                    
+                    supabase.table('vendas').update({'status': novo_status}).eq('id', venda_id_atualizar).execute()
+                    
+                    # A MÁGICA DO ROBÔ MULTIPLICADOR
+                    if novo_status == "Concluído" and status_antigo != "Concluído":
+                        nome_peca = venda_antiga['nome_projeto']
+                        qtd_venda = int(venda_antiga.get('quantidade', 1))
+                        
+                        historico_df = get_df('historico')
+                        if not historico_df.empty:
+                            peca_info = historico_df[historico_df['nome_projeto'] == nome_peca]
+                            if not peca_info.empty:
+                                peca_dados = peca_info.iloc[0]
+                                
+                                # 1. Baixa do Filamento (Gramas * Qtd Vendida)
+                                material_usado = peca_dados['material']
+                                peso_usado = float(peca_dados['peso_g']) * qtd_venda
+                                
+                                fil_df_robo = get_df('filamentos')
+                                if not fil_df_robo.empty:
+                                    fil_df_robo['display'] = fil_df_robo.apply(lambda x: f"{x.get('marca', 'S/N')} - {x['nome']} - {x.get('cor', 'S/N')}", axis=1)
+                                    fil_encontrado = fil_df_robo[fil_df_robo['display'] == material_usado]
+                                    
+                                    if not fil_encontrado.empty:
+                                        fil_id = fil_encontrado.iloc[0]['id']
+                                        peso_atual = float(fil_encontrado.iloc[0]['peso_estoque_g'] or 0)
+                                        novo_peso = peso_atual - peso_usado
+                                        supabase.table('filamentos').update({'peso_estoque_g': novo_peso}).eq('id', int(fil_id)).execute()
+                                
+                                # 2. Baixa dos Insumos Extras (Unidades * Qtd Vendida)
+                                extras_json = peca_dados.get('custos_extras', '[]')
+                                try:
+                                    lista_extras = json.loads(extras_json)
+                                    for ex in lista_extras:
+                                        nome_insumo = ex['nome']
+                                        qtd_usada = int(ex['qtd']) * qtd_venda
+                                        
+                                        out_info = supabase.table('outros').select('id, qtd_estoque').eq('nome', nome_insumo).execute()
+                                        if out_info.data:
+                                            out_id = out_info.data[0]['id']
+                                            qtd_atual = int(out_info.data[0]['qtd_estoque'] or 0)
+                                            nova_qtd = qtd_atual - qtd_usada
+                                            supabase.table('outros').update({'qtd_estoque': nova_qtd}).eq('id', out_id).execute()
+                                except:
+                                    pass
+                                    
+                        st.success("✅ Venda Concluída! Materiais baixados do estoque com sucesso.")
+                    else:
+                        st.success("✅ Status do pedido atualizado!")
+                        
+                    time.sleep(2)
+                    st.rerun()
+        else:
+            st.info("Nenhuma venda registrada ainda. O seu painel de controle aparecerá aqui.")
 
 # =====================================================================
-# MÓDULO 3: RELATÓRIO 
+# MÓDULO 4: RELATÓRIO 
 # =====================================================================
 elif menu == "📜 Módulo 3: RELATÓRIO":
     st.title("📜 Vitrine de Produção e Venda")
@@ -843,179 +1016,6 @@ elif menu == "📜 Módulo 3: RELATÓRIO":
             st.divider()
     else:
         st.info("Nenhuma ficha de produção e venda salva.")
-
-# =====================================================================
-# MÓDULO 4: VENDAS E MARKETPLACES
-# =====================================================================
-elif menu == "💰 Módulo 4: VENDAS":
-    st.title("💰 Gestão de Vendas e Marketplaces")
-    st.markdown("Controle de pedidos, simulação de taxas de plataformas e funil de status.")
-
-    tab_nova_venda, tab_painel = st.tabs(["🛒 Lançar Nova Venda", "📊 Painel de Pedidos"])
-
-    with tab_nova_venda:
-        projetos_df = get_df('historico')
-
-        if not projetos_df.empty:
-            col_v1, col_v2 = st.columns([1, 1.5])
-
-            with col_v1:
-                st.subheader("1. Dados do Cliente e Canal")
-                nome_cliente = st.text_input("Nome do Cliente / Comprador")
-                canal_venda = st.radio("Canal de Venda", ["Venda Direta (WhatsApp/Balcão)", "Shopee", "Mercado Livre"])
-                status_pedido = st.selectbox("Status Atual", ["Aguardando Pagamento", "Em Produção", "Pronto / Enviado", "Concluído"])
-
-            with col_v2:
-                st.subheader("2. Produto e Precificação Dinâmica")
-                proj_selecionado = st.selectbox("Selecione a Peça", projetos_df['nome_projeto'].tolist())
-                peca_dados = projetos_df[projetos_df['nome_projeto'] == proj_selecionado].iloc[0]
-                
-                custo_fabrica = float(peca_dados['custo_total'])
-                preco_sugerido_original = float(peca_dados['preco_venda'])
-
-                st.markdown(f"**Custo de Produção (Fábrica):** R$ {custo_fabrica:.2f}")
-
-                # Dinâmica de Taxas
-                taxa_percentual = 0.0
-                taxa_fixa = 0.0
-
-                if canal_venda == "Shopee":
-                    st.caption("Ajuste as taxas conforme o seu programa (Ex: 14% ou 20% + R$ 3,00 ou R$ 4,00)")
-                    c_tx1, c_tx2 = st.columns(2)
-                    with c_tx1: taxa_percentual = st.number_input("Comissão Shopee (%)", value=20.0, step=1.0)
-                    with c_tx2: taxa_fixa = st.number_input("Taxa Fixa (R$)", value=4.0, step=0.5)
-                elif canal_venda == "Mercado Livre":
-                    st.caption("Ajuste as taxas conforme o anúncio (Clássico/Premium)")
-                    c_tx1, c_tx2 = st.columns(2)
-                    with c_tx1: taxa_percentual = st.number_input("Comissão ML (%)", value=14.0, step=1.0)
-                    with c_tx2: taxa_fixa = st.number_input("Custo Fixo ML (R$)", value=6.0, step=0.5)
-
-                preco_final_venda = st.number_input(
-                    "Preço Final Cobrado do Cliente (R$)", 
-                    value=preco_sugerido_original, 
-                    step=5.0,
-                    help="Aumente este valor para repassar as taxas da plataforma para o cliente e proteger seu lucro."
-                )
-
-                # Cálculos do Lucro Real
-                valor_descontado_taxas = (preco_final_venda * (taxa_percentual / 100)) + taxa_fixa
-                receita_liquida = preco_final_venda - valor_descontado_taxas
-                lucro_real = receita_liquida - custo_fabrica
-                margem_real = (lucro_real / preco_final_venda) * 100 if preco_final_venda > 0 else 0
-
-                st.markdown("---")
-                res_col1, res_col2, res_col3 = st.columns(3)
-                res_col1.metric("Você Recebe (Líquido)", f"R$ {receita_liquida:.2f}", f"- R$ {valor_descontado_taxas:.2f} (Taxas)", delta_color="inverse")
-                res_col2.metric("Lucro Limpo Real", f"R$ {lucro_real:.2f}", f"{margem_real:.1f}% Margem")
-                res_col3.metric("Custo da Peça", f"R$ {custo_fabrica:.2f}")
-
-                if st.button("✅ Registrar Venda", type="primary", use_container_width=True):
-                    if nome_cliente:
-                        supabase.table('vendas').insert({
-                            'cliente': nome_cliente,
-                            'nome_projeto': proj_selecionado,
-                            'canal': canal_venda,
-                            'valor_venda': preco_final_venda,
-                            'taxa_plataforma': valor_descontado_taxas,
-                            'custo_producao': custo_fabrica,
-                            'lucro_liquido': lucro_real,
-                            'status': status_pedido
-                        }).execute()
-                        st.success("✅ Venda registrada com sucesso no funil!")
-                        time.sleep(1.5)
-                        st.rerun()
-                    else:
-                        st.error("🚨 Informe o nome do cliente/comprador antes de salvar.")
-        else:
-            st.info("Você precisa ter projetos salvos no Histórico (Módulo 2) para poder vender.")
-
-    with tab_painel:
-        vendas_df = get_df('vendas')
-        if not vendas_df.empty:
-            st.subheader("Funil de Pedidos Abertos e Concluídos")
-            
-            # Exibição limpa
-            disp_vendas = vendas_df[['id', 'status', 'cliente', 'nome_projeto', 'canal', 'lucro_liquido', 'created_at']].copy()
-            disp_vendas.rename(columns={'status': 'Status', 'cliente': 'Cliente', 'nome_projeto': 'Peça', 'canal': 'Canal', 'lucro_liquido': 'Lucro (R$)'}, inplace=True)
-            
-            # Limpa o formato da data visualmente
-            disp_vendas['Data'] = pd.to_datetime(disp_vendas['created_at']).dt.strftime('%d/%m/%Y')
-            disp_vendas = disp_vendas.drop(columns=['created_at'])
-
-            # Move a coluna de Data para o início
-            cols = ['id', 'Data'] + [col for col in disp_vendas.columns if col not in ['id', 'Data']]
-            disp_vendas = disp_vendas[cols]
-
-            st.dataframe(disp_vendas.style.format({"Lucro (R$)": "R$ {:.2f}"}), use_container_width=True, hide_index=True)
-
-            st.divider()
-            st.markdown("**Atualizar Status do Pedido:**")
-            col_a1, col_a2, col_a3 = st.columns([2, 2, 1])
-            with col_a1:
-                venda_id_atualizar = st.selectbox("Selecione o ID do Pedido", disp_vendas['id'].tolist())
-            with col_a2:
-                novo_status = st.selectbox("Mover para:", ["Aguardando Pagamento", "Em Produção", "Pronto / Enviado", "Concluído"], key="st_update")
-            with col_a3:
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("🔄 Atualizar", use_container_width=True):
-                    # Puxa o status antigo para saber se já estava concluído
-                    venda_antiga = vendas_df[vendas_df['id'] == venda_id_atualizar].iloc[0]
-                    status_antigo = venda_antiga['status']
-                    
-                    # Atualiza o status no banco
-                    supabase.table('vendas').update({'status': novo_status}).eq('id', venda_id_atualizar).execute()
-                    
-                    # A MÁGICA: Se mudou para "Concluído", dispara o robô de baixa de estoque!
-                    if novo_status == "Concluído" and status_antigo != "Concluído":
-                        nome_peca = venda_antiga['nome_projeto']
-                        historico_df = get_df('historico')
-                        
-                        if not historico_df.empty:
-                            peca_info = historico_df[historico_df['nome_projeto'] == nome_peca]
-                            if not peca_info.empty:
-                                peca_dados = peca_info.iloc[0]
-                                
-                                # 1. Baixa do Filamento (Gramas)
-                                material_usado = peca_dados['material']
-                                peso_usado = float(peca_dados['peso_g'])
-                                
-                                # O robô agora busca na lista compilada
-                                fil_df_robo = get_df('filamentos')
-                                if not fil_df_robo.empty:
-                                    fil_df_robo['display'] = fil_df_robo.apply(lambda x: f"{x.get('marca', 'S/N')} - {x['nome']} - {x.get('cor', 'S/N')}", axis=1)
-                                    fil_encontrado = fil_df_robo[fil_df_robo['display'] == material_usado]
-                                    
-                                    if not fil_encontrado.empty:
-                                        fil_id = fil_encontrado.iloc[0]['id']
-                                        peso_atual = float(fil_encontrado.iloc[0]['peso_estoque_g'] or 0)
-                                        novo_peso = peso_atual - peso_usado
-                                        supabase.table('filamentos').update({'peso_estoque_g': novo_peso}).eq('id', int(fil_id)).execute()
-                                
-                                # 2. Baixa dos Insumos Extras (Unidades)
-                                extras_json = peca_dados.get('custos_extras', '[]')
-                                try:
-                                    lista_extras = json.loads(extras_json)
-                                    for ex in lista_extras:
-                                        nome_insumo = ex['nome']
-                                        qtd_usada = int(ex['qtd'])
-                                        
-                                        out_info = supabase.table('outros').select('id, qtd_estoque').eq('nome', nome_insumo).execute()
-                                        if out_info.data:
-                                            out_id = out_info.data[0]['id']
-                                            qtd_atual = int(out_info.data[0]['qtd_estoque'] or 0)
-                                            nova_qtd = qtd_atual - qtd_usada
-                                            supabase.table('outros').update({'qtd_estoque': nova_qtd}).eq('id', out_id).execute()
-                                except:
-                                    pass # Blindagem caso a peça não tenha extras
-                                    
-                        st.success("✅ Venda Concluída! Materiais baixados do estoque automaticamente.")
-                    else:
-                        st.success("✅ Status do pedido atualizado!")
-                        
-                    time.sleep(2)
-                    st.rerun()
-        else:
-            st.info("Nenhuma venda registrada ainda. O seu painel de controle aparecerá aqui.")
 
 # =====================================================================
 # MÓDULO 5: BACKUP E EXPORTAÇÃO
