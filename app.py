@@ -1021,30 +1021,70 @@ elif menu == ROTA_RELATORIO:
 # =====================================================================
 elif menu == ROTA_BACKUP:
     st.title("💾 Backup de Segurança do Sistema")
-    st.markdown("A sua base de dados principal está **blindada e operando na nuvem** pelo Supabase. Mas ter uma cópia física local é a regra de ouro da gestão industrial.")
+    st.markdown("A sua base de dados principal está **blindada e operando na nuvem** pelo Supabase. Mas ter uma cópia física local é a sua garantia de independência e controle total.")
     
     st.divider()
     
-    st.subheader("📦 Exportar Histórico de Projetos")
-    st.caption("Baixe toda a sua inteligência de precificação para abrir no Excel.")
+    st.subheader("📦 Download Rápido dos Dados (CSV)")
+    st.caption("Faça o download das suas tabelas de operação para o seu computador. Elas abrem perfeitamente no Excel.")
     
-    # Busca os dados no banco
-    df_backup_historico = get_df('historico')
+    data_hoje_arquivo = datetime.now().strftime("%Y-%m-%d")
     
-    if not df_backup_historico.empty:
-        # Converte para CSV
-        csv = df_backup_historico.to_csv(index=False).encode('utf-8')
+    # Criando colunas para organizar os botões de backup como um painel corporativo
+    col_b1, col_b2 = st.columns(2, gap="large")
+    
+    with col_b1:
+        st.markdown("### 📊 Inteligência e Vendas")
         
-        data_hoje_arquivo = datetime.now().strftime("%Y-%m-%d")
-        nome_arquivo = f"backup_3dcalcpro_historico_{data_hoje_arquivo}.csv"
+        # 1. Backup do Histórico (Catálogo de Peças)
+        df_historico = get_df('historico')
+        if not df_historico.empty:
+            csv_hist = df_historico.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="⬇️ Baixar Catálogo de Peças",
+                data=csv_hist,
+                file_name=f"vciastudio_catalogo_{data_hoje_arquivo}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+            
+        # 2. Backup de Vendas
+        df_vendas = get_df('vendas')
+        if not df_vendas.empty:
+            csv_vendas = df_vendas.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="⬇️ Baixar Histórico de Vendas",
+                data=csv_vendas,
+                file_name=f"vciastudio_vendas_{data_hoje_arquivo}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+        else:
+            st.info("Nenhuma venda registrada para backup.")
+            
+    with col_b2:
+        st.markdown("### 📦 Controle de Estoque")
         
-        st.download_button(
-            label="⬇️ Baixar Backup do Histórico (CSV)",
-            data=csv,
-            file_name=nome_arquivo,
-            mime="text/csv",
-            type="primary"
-        )
-        st.success("Tudo pronto! Clique no botão acima para salvar a cópia no seu HD.")
-    else:
-        st.warning("O seu histórico ainda está vazio. Cadastre e precifique peças para gerar um backup.")
+        # 3. Backup de Filamentos
+        df_filamentos = get_df('filamentos')
+        if not df_filamentos.empty:
+            csv_fil = df_filamentos.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="⬇️ Baixar Estoque de Filamentos",
+                data=csv_fil,
+                file_name=f"vciastudio_filamentos_{data_hoje_arquivo}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+            
+        # 4. Backup de Outros Insumos
+        df_outros = get_df('outros')
+        if not df_outros.empty:
+            csv_outros = df_outros.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="⬇️ Baixar Estoque de Insumos Extras",
+                data=csv_outros,
+                file_name=f"vciastudio_insumos_{data_hoje_arquivo}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
