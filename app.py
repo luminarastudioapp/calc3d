@@ -138,13 +138,6 @@ menu = st.sidebar.radio(
 # =====================================================================
 # MÓDULO 1: CADASTROS 
 # =====================================================================
-if menu == ROTA_CADASTROS:
-    st.title("⚙️ Cadastros e Custos da Gráfica")
-    # ... (o resto do seu código do módulo 1 continua aqui)
-
-# =====================================================================
-# MÓDULO 1: CADASTROS 
-# =====================================================================
 if menu == "⚙️ Módulo 1: CADASTROS":
     st.title("⚙️ Cadastros e Custos da Gráfica")
     tab_cfg, tab_cat, tab_fil, tab_out, tab_imp, tab_pecas, tab_est = st.tabs(["💵 Custos Fixos", "🏷️ Categorias", "🧵 Filamentos", "📦 Outros", "🖨️ Impressoras", "🧩 Catálogo de Peças", "📦 Estoque"])
