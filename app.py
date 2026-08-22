@@ -140,7 +140,7 @@ menu = st.sidebar.radio(
 # =====================================================================
 if menu == "⚙️ Módulo 1: CADASTROS":
     st.title("⚙️ Cadastros e Custos da Gráfica")
-    tab_cfg, tab_cat, tab_fil, tab_out, tab_imp, tab_pecas = st.tabs(["💵 Custos Fixos", "🏷️ Categorias", "🧵 Filamentos", "📦 Outros", "🖨️ Impressoras", "🧩 Catálogo de Peças"])
+    tab_cfg, tab_cat, tab_fil, tab_out, tab_imp, tab_pecas, tab_est = st.tabs(["💵 Custos Fixos", "🏷️ Categorias", "🧵 Filamentos", "📦 Outros", "🖨️ Impressoras", "🧩 Catálogo de Peças", "📦 Estoque"])
     
     # --- CONFIGURAÇÕES GERAIS ---
     with tab_cfg:
@@ -405,6 +405,49 @@ if menu == "⚙️ Módulo 1: CADASTROS":
                 
                 st.button("✏️ Enviar para Edição (Módulo 2)", type="primary", use_container_width=True, on_click=preparar_edicao)
 
+# --- GESTÃO DE ESTOQUE (NOVO) ---
+    with tab_est:
+        st.subheader("📦 Controle de Estoque (Físico)")
+        st.caption("Alimente seu estoque inicial aqui. Quando uma venda for concluída, o sistema fará o desconto automático.")
+        
+        col_est1, col_est2 = st.columns(2, gap="large")
+        
+        with col_est1:
+            st.markdown("**🧵 Filamentos (Gramas)**")
+            fil_df = get_df('filamentos')
+            if not fil_df.empty:
+                for idx, row in fil_df.iterrows():
+                    peso_atual = float(row.get('peso_estoque_g', 0))
+                    # Usamos colunas para alinhar o input e o botão salvar lado a lado
+                    ce1, ce2 = st.columns([3, 1])
+                    with ce1: novo_peso = st.number_input(f"{row['nome']} (g)", value=peso_atual, step=50.0, key=f"est_fil_{row['id']}")
+                    with ce2: 
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        if st.button("💾", key=f"btn_fil_{row['id']}", help="Salvar Alteração"):
+                            supabase.table('filamentos').update({'peso_estoque_g': novo_peso}).eq('id', row['id']).execute()
+                            st.success("Salvo!")
+                            time.sleep(0.5)
+                            st.rerun()
+            else:
+                st.info("Nenhum filamento cadastrado.")
+                
+        with col_est2:
+            st.markdown("**📦 Outros Insumos (Unidades)**")
+            out_df = get_df('outros')
+            if not out_df.empty:
+                for idx, row in out_df.iterrows():
+                    qtd_atual = int(row.get('qtd_estoque', 0))
+                    ce1, ce2 = st.columns([3, 1])
+                    with ce1: nova_qtd = st.number_input(f"{row['nome']} - {row['marca']} (Un)", value=qtd_atual, step=1, key=f"est_out_{row['id']}")
+                    with ce2:
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        if st.button("💾", key=f"btn_out_{row['id']}", help="Salvar Alteração"):
+                            supabase.table('outros').update({'qtd_estoque': nova_qtd}).eq('id', row['id']).execute()
+                            st.success("Salvo!")
+                            time.sleep(0.5)
+                            st.rerun()
+            else:
+                st.info("Nenhum insumo extra cadastrado.")
 
 # =====================================================================
 # MÓDULO 2: NOVO PROJETO 
@@ -829,9 +872,56 @@ elif menu == "💰 Módulo 4: VENDAS":
             with col_a3:
                 st.markdown("<br>", unsafe_allow_html=True)
                 if st.button("🔄 Atualizar", use_container_width=True):
+                    # Puxa o status antigo para saber se já estava concluído
+                    venda_antiga = vendas_df[vendas_df['id'] == venda_id_atualizar].iloc[0]
+                    status_antigo = venda_antiga['status']
+                    
+                    # Atualiza o status no banco
                     supabase.table('vendas').update({'status': novo_status}).eq('id', venda_id_atualizar).execute()
-                    st.success("✅ Status Atualizado!")
-                    time.sleep(1)
+                    
+                    # A MÁGICA: Se mudou para "Concluído", dispara o robô de baixa de estoque!
+                    if novo_status == "Concluído" and status_antigo != "Concluído":
+                        nome_peca = venda_antiga['nome_projeto']
+                        historico_df = get_df('historico')
+                        
+                        if not historico_df.empty:
+                            peca_info = historico_df[historico_df['nome_projeto'] == nome_peca]
+                            if not peca_info.empty:
+                                peca_dados = peca_info.iloc[0]
+                                
+                                # 1. Baixa do Filamento (Gramas)
+                                material_usado = peca_dados['material']
+                                peso_usado = float(peca_dados['peso_g'])
+                                
+                                fil_info = supabase.table('filamentos').select('id, peso_estoque_g').eq('nome', material_usado).execute()
+                                if fil_info.data:
+                                    fil_id = fil_info.data[0]['id']
+                                    peso_atual = float(fil_info.data[0]['peso_estoque_g'] or 0)
+                                    novo_peso = peso_atual - peso_usado
+                                    supabase.table('filamentos').update({'peso_estoque_g': novo_peso}).eq('id', fil_id).execute()
+                                
+                                # 2. Baixa dos Insumos Extras (Unidades)
+                                extras_json = peca_dados.get('custos_extras', '[]')
+                                try:
+                                    lista_extras = json.loads(extras_json)
+                                    for ex in lista_extras:
+                                        nome_insumo = ex['nome']
+                                        qtd_usada = int(ex['qtd'])
+                                        
+                                        out_info = supabase.table('outros').select('id, qtd_estoque').eq('nome', nome_insumo).execute()
+                                        if out_info.data:
+                                            out_id = out_info.data[0]['id']
+                                            qtd_atual = int(out_info.data[0]['qtd_estoque'] or 0)
+                                            nova_qtd = qtd_atual - qtd_usada
+                                            supabase.table('outros').update({'qtd_estoque': nova_qtd}).eq('id', out_id).execute()
+                                except:
+                                    pass # Blindagem caso a peça não tenha extras
+                                    
+                        st.success("✅ Venda Concluída! Materiais baixados do estoque automaticamente.")
+                    else:
+                        st.success("✅ Status do pedido atualizado!")
+                        
+                    time.sleep(2)
                     st.rerun()
         else:
             st.info("Nenhuma venda registrada ainda. O seu painel de controle aparecerá aqui.")
