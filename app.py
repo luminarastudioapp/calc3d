@@ -457,46 +457,52 @@ if menu == "⚙️ Módulo 1: CADASTROS":
         with col_est1:
             st.markdown("**🧵 Ajuste de Filamentos**")
             if not fil_df.empty:
-                # Cria a lista compilada para a seleção
+                # Cria a lista compilada e adiciona o texto indicativo no topo
                 fil_df['display'] = fil_df.apply(lambda x: f"{x.get('marca', '')} {x['nome']} {x.get('cor', '')}".strip(), axis=1)
-                fil_edit_sel = st.selectbox("Selecione o Filamento:", fil_df['display'].tolist(), key="sel_est_fil")
+                opcoes_filamentos = ["-- Selecione o Filamento --"] + fil_df['display'].tolist()
                 
-                # Puxa os dados exatos do selecionado para o formulário
-                row_fil = fil_df[fil_df['display'] == fil_edit_sel].iloc[0]
-                peso_atual = float(row_fil.get('peso_estoque_g', 0))
+                fil_edit_sel = st.selectbox("Ajuste de Filamentos", opcoes_filamentos, label_visibility="collapsed", key="sel_est_fil")
                 
-                ce1, ce2 = st.columns([3, 1])
-                with ce1: 
-                    novo_peso = st.number_input("Estoque Físico (g)", value=peso_atual, step=50.0, key="inp_est_fil")
-                with ce2: 
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    if st.button("💾 Salvar", key="btn_est_fil", use_container_width=True):
-                        supabase.table('filamentos').update({'peso_estoque_g': novo_peso}).eq('id', int(row_fil['id'])).execute()
-                        st.success("Atualizado!")
-                        time.sleep(0.5)
-                        st.rerun()
+                # O formulário só aparece se for uma escolha válida (diferente da primeira opção)
+                if fil_edit_sel != "-- Selecione o Filamento --":
+                    row_fil = fil_df[fil_df['display'] == fil_edit_sel].iloc[0]
+                    peso_atual = float(row_fil.get('peso_estoque_g', 0))
+                    
+                    ce1, ce2 = st.columns([3, 1])
+                    with ce1: 
+                        novo_peso = st.number_input("Estoque Físico (g)", value=peso_atual, step=50.0, key="inp_est_fil")
+                    with ce2: 
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        if st.button("💾 Salvar", key="btn_est_fil", use_container_width=True):
+                            supabase.table('filamentos').update({'peso_estoque_g': novo_peso}).eq('id', int(row_fil['id'])).execute()
+                            st.success("Atualizado!")
+                            time.sleep(0.5)
+                            st.rerun()
                             
         with col_est2:
             st.markdown("**📦 Ajuste de Insumos**")
             if not out_df.empty:
-                # Cria a lista compilada para a seleção
+                # Cria a lista compilada e adiciona o texto indicativo no topo
                 out_df['display'] = out_df.apply(lambda x: f"{x.get('marca', '')} - {x['nome']}".strip(' -'), axis=1)
-                out_edit_sel = st.selectbox("Selecione o Insumo:", out_df['display'].tolist(), key="sel_est_out")
+                opcoes_insumos = ["-- Selecione o Insumo --"] + out_df['display'].tolist()
                 
-                # Puxa os dados exatos do selecionado para o formulário
-                row_out = out_df[out_df['display'] == out_edit_sel].iloc[0]
-                qtd_atual = int(row_out.get('qtd_estoque', 0))
+                out_edit_sel = st.selectbox("Ajuste de Insumos", opcoes_insumos, label_visibility="collapsed", key="sel_est_out")
                 
-                ce1, ce2 = st.columns([3, 1])
-                with ce1: 
-                    nova_qtd = st.number_input("Estoque Físico (Un)", value=qtd_atual, step=1, key="inp_est_out")
-                with ce2:
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    if st.button("💾 Salvar", key="btn_est_out", use_container_width=True):
-                        supabase.table('outros').update({'qtd_estoque': nova_qtd}).eq('id', int(row_out['id'])).execute()
-                        st.success("Atualizado!")
-                        time.sleep(0.5)
-                        st.rerun()
+                # O formulário só aparece se for uma escolha válida
+                if out_edit_sel != "-- Selecione o Insumo --":
+                    row_out = out_df[out_df['display'] == out_edit_sel].iloc[0]
+                    qtd_atual = int(row_out.get('qtd_estoque', 0))
+                    
+                    ce1, ce2 = st.columns([3, 1])
+                    with ce1: 
+                        nova_qtd = st.number_input("Estoque Físico (Un)", value=qtd_atual, step=1, key="inp_est_out")
+                    with ce2:
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        if st.button("💾 Salvar", key="btn_est_out", use_container_width=True):
+                            supabase.table('outros').update({'qtd_estoque': nova_qtd}).eq('id', int(row_out['id'])).execute()
+                            st.success("Atualizado!")
+                            time.sleep(0.5)
+                            st.rerun()
 
 # =====================================================================
 # MÓDULO 2: NOVO PROJETO 
