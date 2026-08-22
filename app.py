@@ -211,7 +211,6 @@ if menu == "⚙️ Módulo 1: CADASTROS":
                     st.rerun()
 
     # --- CRUD: FILAMENTOS ---
-    # --- CRUD: FILAMENTOS ---
     with tab_fil:
         filamentos_df = get_df('filamentos')
         if not filamentos_df.empty:
@@ -766,7 +765,7 @@ elif menu == "🚀 Módulo 2: NOVO PROJETO":
 # =====================================================================
 # MÓDULO 3: VENDAS E MARKETPLACES
 # =====================================================================
-elif menu == "💰 Módulo 4: VENDAS":
+elif menu == "💰 Módulo 3: VENDAS":
     st.title("💰 Gestão de Vendas e Marketplaces")
     st.markdown("Controle de pedidos, simulação de taxas de plataformas e funil de status.")
 
@@ -941,7 +940,7 @@ elif menu == "💰 Módulo 4: VENDAS":
 # =====================================================================
 # MÓDULO 4: RELATÓRIO 
 # =====================================================================
-elif menu == "📜 Módulo 3: RELATÓRIO":
+elif menu == "📜 Módulo 4: RELATÓRIO":
     st.title("📜 Vitrine de Produção e Venda")
     
     st.markdown("""
