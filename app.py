@@ -128,7 +128,9 @@ menu = st.sidebar.radio(
     [
         "⚙️ Módulo 1: CADASTROS", 
         "🚀 Módulo 2: NOVO PROJETO", 
-        "📜 Módulo 3: RELATÓRIO"
+        "📜 Módulo 3: RELATÓRIO",
+        "💰 Módulo 4: VENDAS (Em Breve)",
+        "💾 Módulo 5: BACKUP"
     ],
     key="menu_selecionado" # Essa é a chave que vamos hackear para pular de tela
 )
@@ -712,3 +714,43 @@ elif menu == "📜 Módulo 3: RELATÓRIO":
             st.divider()
     else:
         st.info("Nenhuma ficha de produção e venda salva.")
+
+# =====================================================================
+# MÓDULO 4: VENDAS (ESQUELETO)
+# =====================================================================
+elif menu == "💰 Módulo 4: VENDAS (Em Breve)":
+    st.title("💰 Gestão de Vendas e Clientes")
+    st.info("🚧 O motor de vendas está sendo construído. Aqui você fará a gestão de clientes, status de pedidos e integração com WhatsApp!")
+
+# =====================================================================
+# MÓDULO 5: BACKUP E EXPORTAÇÃO
+# =====================================================================
+elif menu == "💾 Módulo 5: BACKUP":
+    st.title("💾 Backup de Segurança do Sistema")
+    st.markdown("A sua base de dados principal está **blindada e operando na nuvem** pelo Supabase. Mas ter uma cópia física local é a regra de ouro da gestão industrial.")
+    
+    st.divider()
+    
+    st.subheader("📦 Exportar Histórico de Projetos")
+    st.caption("Baixe toda a sua inteligência de precificação para abrir no Excel.")
+    
+    # Busca os dados no banco
+    df_backup_historico = get_df('historico')
+    
+    if not df_backup_historico.empty:
+        # Converte para CSV
+        csv = df_backup_historico.to_csv(index=False).encode('utf-8')
+        
+        data_hoje_arquivo = datetime.now().strftime("%Y-%m-%d")
+        nome_arquivo = f"backup_3dcalcpro_historico_{data_hoje_arquivo}.csv"
+        
+        st.download_button(
+            label="⬇️ Baixar Backup do Histórico (CSV)",
+            data=csv,
+            file_name=nome_arquivo,
+            mime="text/csv",
+            type="primary"
+        )
+        st.success("Tudo pronto! Clique no botão acima para salvar a cópia no seu HD.")
+    else:
+        st.warning("O seu histórico ainda está vazio. Cadastre e precifique peças para gerar um backup.")
