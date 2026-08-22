@@ -420,89 +420,106 @@ if menu == "⚙️ Módulo 1: CADASTROS":
                 st.button("✏️ Enviar para Edição (Módulo 2)", type="primary", use_container_width=True, on_click=preparar_edicao)
 
 # --- GESTÃO DE ESTOQUE (NOVO) ---
-    # --- GESTÃO DE ESTOQUE ---
-    # --- GESTÃO DE ESTOQUE ---
+    # --- GESTÃO DE ESTOQUE UNIFICADO ---
     with tab_est:
-        st.subheader("📦 Visão Geral do Estoque")
+        st.subheader("📦 Controle Central de Estoque")
+        st.caption("Todos os seus materiais em um único painel. Clique no ícone ✏️ ao lado do insumo para ajustar a quantidade.")
+        
+        # 1. Puxando e Unificando os Dados
         fil_df = get_df('filamentos')
         out_df = get_df('outros')
         
-        col_v1, col_v2 = st.columns(2)
-        with col_v1:
-            st.markdown("**🧵 Filamentos Disponíveis**")
-            if not fil_df.empty:
-                df_fil_vis = fil_df.copy()
-                df_fil_vis['Filamento'] = df_fil_vis.apply(lambda x: f"{x.get('marca', '')} {x['nome']} {x.get('cor', '')}".strip(), axis=1)
-                df_fil_vis.rename(columns={'peso_estoque_g': 'Estoque (g)'}, inplace=True)
-                st.dataframe(df_fil_vis[['Filamento', 'Estoque (g)']], use_container_width=True, hide_index=True)
-            else:
-                st.info("Sem filamentos.")
-                
-        with col_v2:
-            st.markdown("**📦 Insumos Extras**")
-            if not out_df.empty:
-                df_out_vis = out_df.copy()
-                df_out_vis['Insumo'] = df_out_vis.apply(lambda x: f"{x.get('marca', '')} - {x['nome']}".strip(' -'), axis=1)
-                df_out_vis.rename(columns={'qtd_estoque': 'Qtd (Un)'}, inplace=True)
-                st.dataframe(df_out_vis[['Insumo', 'Qtd (Un)']], use_container_width=True, hide_index=True)
-            else:
-                st.info("Sem insumos.")
-                
-        st.divider()
-        st.subheader("⚖️ Atualização Manual Inteligente")
-        st.caption("Selecione o item na lista abaixo para habilitar o formulário de edição de estoque.")
+        estoque_unificado = []
         
-        col_est1, col_est2 = st.columns(2, gap="large")
-        
-        with col_est1:
-            st.markdown("**🧵 Ajuste de Filamentos**")
-            if not fil_df.empty:
-                # Cria a lista compilada e adiciona o texto indicativo no topo
-                fil_df['display'] = fil_df.apply(lambda x: f"{x.get('marca', '')} {x['nome']} {x.get('cor', '')}".strip(), axis=1)
-                opcoes_filamentos = ["-- Selecione o Filamento --"] + fil_df['display'].tolist()
+        if not fil_df.empty:
+            for _, row in fil_df.iterrows():
+                estoque_unificado.append({
+                    'id_db': row['id'],
+                    'categoria': 'Filamento',
+                    'nome_exibicao': f"{row.get('marca', '')} {row['nome']} {row.get('cor', '')}".strip(),
+                    'estoque': float(row.get('peso_estoque_g', 0)),
+                    'unidade': 'g',
+                    'step': 50.0
+                })
                 
-                fil_edit_sel = st.selectbox("Ajuste de Filamentos", opcoes_filamentos, label_visibility="collapsed", key="sel_est_fil")
+        if not out_df.empty:
+            for _, row in out_df.iterrows():
+                estoque_unificado.append({
+                    'id_db': row['id'],
+                    'categoria': 'Embalagem/Extra',
+                    'nome_exibicao': f"{row.get('marca', '')} - {row['nome']}".strip(' -'),
+                    'estoque': int(row.get('qtd_estoque', 0)),
+                    'unidade': 'Un',
+                    'step': 1.0
+                })
+
+        # Inicializa a memória de edição do estoque (se não existir)
+        if "item_edit_est" not in st.session_state:
+            st.session_state.item_edit_est = None
+
+        if estoque_unificado:
+            # 2. Construindo a Tabela Visual Customizada (Estilo ERP)
+            st.markdown("""
+            <div style='background-color: #1e1e1e; padding: 10px; border-radius: 5px; margin-bottom: 10px; border: 1px solid #333;'>
+                <div style='display: flex; justify-content: space-between; color: #4A90E2;'>
+                    <b style='width: 25%;'>Categoria</b>
+                    <b style='width: 45%;'>Descrição do Insumo</b>
+                    <b style='width: 20%;'>Quantidade</b>
+                    <b style='width: 10%; text-align: center;'>Ação</b>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Gerando as linhas da tabela com os botões
+            for item in estoque_unificado:
+                c1, c2, c3, c4 = st.columns([2.5, 4.5, 2, 1])
+                c1.write(f"🏷️ {item['categoria']}")
+                c2.write(item['nome_exibicao'])
+                c3.write(f"**{item['estoque']}** {item['unidade']}")
                 
-                # O formulário só aparece se for uma escolha válida (diferente da primeira opção)
-                if fil_edit_sel != "-- Selecione o Filamento --":
-                    row_fil = fil_df[fil_df['display'] == fil_edit_sel].iloc[0]
-                    peso_atual = float(row_fil.get('peso_estoque_g', 0))
-                    
-                    ce1, ce2 = st.columns([3, 1])
-                    with ce1: 
-                        novo_peso = st.number_input("Estoque Físico (g)", value=peso_atual, step=50.0, key="inp_est_fil")
-                    with ce2: 
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        if st.button("💾 Salvar", key="btn_est_fil", use_container_width=True):
-                            supabase.table('filamentos').update({'peso_estoque_g': novo_peso}).eq('id', int(row_fil['id'])).execute()
-                            st.success("Atualizado!")
-                            time.sleep(0.5)
-                            st.rerun()
-                            
-        with col_est2:
-            st.markdown("**📦 Ajuste de Insumos**")
-            if not out_df.empty:
-                # Cria a lista compilada e adiciona o texto indicativo no topo
-                out_df['display'] = out_df.apply(lambda x: f"{x.get('marca', '')} - {x['nome']}".strip(' -'), axis=1)
-                opcoes_insumos = ["-- Selecione o Insumo --"] + out_df['display'].tolist()
+                # Botão de editar (O click salva o item na memória e recarrega a tela)
+                if c4.button("✏️", key=f"btn_edt_{item['categoria']}_{item['id_db']}", help="Editar estoque deste item", use_container_width=True):
+                    st.session_state.item_edit_est = item
+                    st.rerun()
+
+            st.divider()
+            
+            # 3. Formulário de Edição Inteligente (Só aparece se você clicou em algum lápis)
+            if st.session_state.item_edit_est:
+                item_atual = st.session_state.item_edit_est
                 
-                out_edit_sel = st.selectbox("Ajuste de Insumos", opcoes_insumos, label_visibility="collapsed", key="sel_est_out")
+                st.markdown("### ⚖️ Ajuste Manual do Estoque")
+                st.info(f"Alterando o estoque de: **{item_atual['nome_exibicao']}**")
                 
-                # O formulário só aparece se for uma escolha válida
-                if out_edit_sel != "-- Selecione o Insumo --":
-                    row_out = out_df[out_df['display'] == out_edit_sel].iloc[0]
-                    qtd_atual = int(row_out.get('qtd_estoque', 0))
-                    
-                    ce1, ce2 = st.columns([3, 1])
-                    with ce1: 
-                        nova_qtd = st.number_input("Estoque Físico (Un)", value=qtd_atual, step=1, key="inp_est_out")
-                    with ce2:
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        if st.button("💾 Salvar", key="btn_est_out", use_container_width=True):
-                            supabase.table('outros').update({'qtd_estoque': nova_qtd}).eq('id', int(row_out['id'])).execute()
-                            st.success("Atualizado!")
-                            time.sleep(0.5)
-                            st.rerun()
+                col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
+                with col_f1:
+                    novo_valor = st.number_input(
+                        f"Nova Quantidade ({item_atual['unidade']})", 
+                        value=float(item_atual['estoque']) if item_atual['categoria'] == 'Filamento' else int(item_atual['estoque']), 
+                        step=item_atual['step'], 
+                        key="inp_novo_estoque"
+                    )
+                with col_f2:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("💾 Salvar", use_container_width=True, type="primary"):
+                        # Atualiza no Supabase dependendo da categoria
+                        if item_atual['categoria'] == 'Filamento':
+                            supabase.table('filamentos').update({'peso_estoque_g': novo_valor}).eq('id', item_atual['id_db']).execute()
+                        else:
+                            supabase.table('outros').update({'qtd_estoque': novo_valor}).eq('id', item_atual['id_db']).execute()
+                        
+                        st.success("✅ Estoque atualizado!")
+                        st.session_state.item_edit_est = None # Limpa a seleção
+                        time.sleep(1)
+                        st.rerun()
+                        
+                with col_f3:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("❌ Cancelar", use_container_width=True):
+                        st.session_state.item_edit_est = None # Aborta e limpa a tela
+                        st.rerun()
+        else:
+            st.info("O seu estoque está vazio. Cadastre filamentos ou insumos nas abas anteriores.")
 
 # =====================================================================
 # MÓDULO 2: NOVO PROJETO 
