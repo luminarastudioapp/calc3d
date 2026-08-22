@@ -457,10 +457,10 @@ if menu == "⚙️ Módulo 1: CADASTROS":
             st.session_state.item_edit_est = None
 
         if estoque_unificado:
-            # 2. Construindo a Tabela Visual Customizada (Estilo ERP)
+           # 2. Construindo a Tabela Visual Customizada (Estilo ERP Tema Claro)
             st.markdown("""
-            <div style='background-color: #1e1e1e; padding: 10px; border-radius: 5px; margin-bottom: 10px; border: 1px solid #333;'>
-                <div style='display: flex; justify-content: space-between; color: #4A90E2;'>
+            <div style='background-color: #f8f9fa; padding: 10px; border-radius: 5px; margin-bottom: 10px; border: 1px solid #e0e0e0;'>
+                <div style='display: flex; justify-content: space-between; color: #31333F;'>
                     <b style='width: 25%;'>Categoria</b>
                     <b style='width: 45%;'>Descrição do Insumo</b>
                     <b style='width: 20%;'>Quantidade</b>
