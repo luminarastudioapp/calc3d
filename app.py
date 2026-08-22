@@ -129,7 +129,7 @@ menu = st.sidebar.radio(
         "⚙️ Módulo 1: CADASTROS", 
         "🚀 Módulo 2: NOVO PROJETO", 
         "📜 Módulo 3: RELATÓRIO",
-        "💰 Módulo 4: VENDAS (Em Breve)",
+        "💰 Módulo 4: VENDAS",
         "💾 Módulo 5: BACKUP"
     ],
     key="menu_selecionado" # Essa é a chave que vamos hackear para pular de tela
@@ -716,11 +716,125 @@ elif menu == "📜 Módulo 3: RELATÓRIO":
         st.info("Nenhuma ficha de produção e venda salva.")
 
 # =====================================================================
-# MÓDULO 4: VENDAS (ESQUELETO)
+# MÓDULO 4: VENDAS E MARKETPLACES
 # =====================================================================
-elif menu == "💰 Módulo 4: VENDAS (Em Breve)":
-    st.title("💰 Gestão de Vendas e Clientes")
-    st.info("🚧 O motor de vendas está sendo construído. Aqui você fará a gestão de clientes, status de pedidos e integração com WhatsApp!")
+elif menu == "💰 Módulo 4: VENDAS":
+    st.title("💰 Gestão de Vendas e Marketplaces")
+    st.markdown("Controle de pedidos, simulação de taxas de plataformas e funil de status.")
+
+    tab_nova_venda, tab_painel = st.tabs(["🛒 Lançar Nova Venda", "📊 Painel de Pedidos"])
+
+    with tab_nova_venda:
+        projetos_df = get_df('historico')
+
+        if not projetos_df.empty:
+            col_v1, col_v2 = st.columns([1, 1.5])
+
+            with col_v1:
+                st.subheader("1. Dados do Cliente e Canal")
+                nome_cliente = st.text_input("Nome do Cliente / Comprador")
+                canal_venda = st.radio("Canal de Venda", ["Venda Direta (WhatsApp/Balcão)", "Shopee", "Mercado Livre"])
+                status_pedido = st.selectbox("Status Atual", ["Aguardando Pagamento", "Em Produção", "Pronto / Enviado", "Concluído"])
+
+            with col_v2:
+                st.subheader("2. Produto e Precificação Dinâmica")
+                proj_selecionado = st.selectbox("Selecione a Peça", projetos_df['nome_projeto'].tolist())
+                peca_dados = projetos_df[projetos_df['nome_projeto'] == proj_selecionado].iloc[0]
+                
+                custo_fabrica = float(peca_dados['custo_total'])
+                preco_sugerido_original = float(peca_dados['preco_venda'])
+
+                st.markdown(f"**Custo de Produção (Fábrica):** R$ {custo_fabrica:.2f}")
+
+                # Dinâmica de Taxas
+                taxa_percentual = 0.0
+                taxa_fixa = 0.0
+
+                if canal_venda == "Shopee":
+                    st.caption("Ajuste as taxas conforme o seu programa (Ex: 14% ou 20% + R$ 3,00 ou R$ 4,00)")
+                    c_tx1, c_tx2 = st.columns(2)
+                    with c_tx1: taxa_percentual = st.number_input("Comissão Shopee (%)", value=20.0, step=1.0)
+                    with c_tx2: taxa_fixa = st.number_input("Taxa Fixa (R$)", value=4.0, step=0.5)
+                elif canal_venda == "Mercado Livre":
+                    st.caption("Ajuste as taxas conforme o anúncio (Clássico/Premium)")
+                    c_tx1, c_tx2 = st.columns(2)
+                    with c_tx1: taxa_percentual = st.number_input("Comissão ML (%)", value=14.0, step=1.0)
+                    with c_tx2: taxa_fixa = st.number_input("Custo Fixo ML (R$)", value=6.0, step=0.5)
+
+                preco_final_venda = st.number_input(
+                    "Preço Final Cobrado do Cliente (R$)", 
+                    value=preco_sugerido_original, 
+                    step=5.0,
+                    help="Aumente este valor para repassar as taxas da plataforma para o cliente e proteger seu lucro."
+                )
+
+                # Cálculos do Lucro Real
+                valor_descontado_taxas = (preco_final_venda * (taxa_percentual / 100)) + taxa_fixa
+                receita_liquida = preco_final_venda - valor_descontado_taxas
+                lucro_real = receita_liquida - custo_fabrica
+                margem_real = (lucro_real / preco_final_venda) * 100 if preco_final_venda > 0 else 0
+
+                st.markdown("---")
+                res_col1, res_col2, res_col3 = st.columns(3)
+                res_col1.metric("Você Recebe (Líquido)", f"R$ {receita_liquida:.2f}", f"- R$ {valor_descontado_taxas:.2f} (Taxas)", delta_color="inverse")
+                res_col2.metric("Lucro Limpo Real", f"R$ {lucro_real:.2f}", f"{margem_real:.1f}% Margem")
+                res_col3.metric("Custo da Peça", f"R$ {custo_fabrica:.2f}")
+
+                if st.button("✅ Registrar Venda", type="primary", use_container_width=True):
+                    if nome_cliente:
+                        supabase.table('vendas').insert({
+                            'cliente': nome_cliente,
+                            'nome_projeto': proj_selecionado,
+                            'canal': canal_venda,
+                            'valor_venda': preco_final_venda,
+                            'taxa_plataforma': valor_descontado_taxas,
+                            'custo_producao': custo_fabrica,
+                            'lucro_liquido': lucro_real,
+                            'status': status_pedido
+                        }).execute()
+                        st.success("✅ Venda registrada com sucesso no funil!")
+                        time.sleep(1.5)
+                        st.rerun()
+                    else:
+                        st.error("🚨 Informe o nome do cliente/comprador antes de salvar.")
+        else:
+            st.info("Você precisa ter projetos salvos no Histórico (Módulo 2) para poder vender.")
+
+    with tab_painel:
+        vendas_df = get_df('vendas')
+        if not vendas_df.empty:
+            st.subheader("Funil de Pedidos Abertos e Concluídos")
+            
+            # Exibição limpa
+            disp_vendas = vendas_df[['id', 'status', 'cliente', 'nome_projeto', 'canal', 'lucro_liquido', 'created_at']].copy()
+            disp_vendas.rename(columns={'status': 'Status', 'cliente': 'Cliente', 'nome_projeto': 'Peça', 'canal': 'Canal', 'lucro_liquido': 'Lucro (R$)'}, inplace=True)
+            
+            # Limpa o formato da data visualmente
+            disp_vendas['Data'] = pd.to_datetime(disp_vendas['created_at']).dt.strftime('%d/%m/%Y')
+            disp_vendas = disp_vendas.drop(columns=['created_at'])
+
+            # Move a coluna de Data para o início
+            cols = ['id', 'Data'] + [col for col in disp_vendas.columns if col not in ['id', 'Data']]
+            disp_vendas = disp_vendas[cols]
+
+            st.dataframe(disp_vendas.style.format({"Lucro (R$)": "R$ {:.2f}"}), use_container_width=True, hide_index=True)
+
+            st.divider()
+            st.markdown("**Atualizar Status do Pedido:**")
+            col_a1, col_a2, col_a3 = st.columns([2, 2, 1])
+            with col_a1:
+                venda_id_atualizar = st.selectbox("Selecione o ID do Pedido", disp_vendas['id'].tolist())
+            with col_a2:
+                novo_status = st.selectbox("Mover para:", ["Aguardando Pagamento", "Em Produção", "Pronto / Enviado", "Concluído"], key="st_update")
+            with col_a3:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("🔄 Atualizar", use_container_width=True):
+                    supabase.table('vendas').update({'status': novo_status}).eq('id', venda_id_atualizar).execute()
+                    st.success("✅ Status Atualizado!")
+                    time.sleep(1)
+                    st.rerun()
+        else:
+            st.info("Nenhuma venda registrada ainda. O seu painel de controle aparecerá aqui.")
 
 # =====================================================================
 # MÓDULO 5: BACKUP E EXPORTAÇÃO
