@@ -211,37 +211,51 @@ if menu == "⚙️ Módulo 1: CADASTROS":
                     st.rerun()
 
     # --- CRUD: FILAMENTOS ---
+    # --- CRUD: FILAMENTOS ---
     with tab_fil:
         filamentos_df = get_df('filamentos')
         if not filamentos_df.empty:
             display_fil = filamentos_df.copy()
-            display_fil.rename(columns={'nome': 'Nome', 'preco_kg': 'Preço/KG (R$)'}, inplace=True)
-            st.dataframe(display_fil[['id', 'Nome', 'Preço/KG (R$)']], use_container_width=True, hide_index=True)
+            # Garante a estabilidade da tabela caso as colunas estejam vazias
+            if 'marca' not in display_fil.columns: display_fil['marca'] = 'S/N'
+            if 'cor' not in display_fil.columns: display_fil['cor'] = 'S/N'
+            
+            display_fil.rename(columns={'marca': 'Marca', 'nome': 'Tipo', 'cor': 'Cor', 'preco_kg': 'Preço/KG (R$)'}, inplace=True)
+            st.dataframe(display_fil[['id', 'Marca', 'Tipo', 'Cor', 'Preço/KG (R$)']], use_container_width=True, hide_index=True)
 
         acao_fil = st.radio("Ação Filamento", ["Novo", "Editar / Excluir"], horizontal=True, label_visibility="collapsed", key="rad_fil")
         
         if acao_fil == "Novo":
             with st.form("form_fil", clear_on_submit=True):
-                nome_fil = st.text_input("Nome do Filamento")
+                col_f1, col_f2, col_f3 = st.columns(3)
+                with col_f1: marca_fil = st.text_input("Marca / Fornecedor (Ex: Voolt3D)")
+                with col_f2: nome_fil = st.text_input("Tipo (Ex: PLA, PETG)")
+                with col_f3: cor_fil = st.text_input("Cor (Ex: Preto Silk)")
+                
                 preco_fil = st.number_input("Custo Unitário (R$/KG)", min_value=0.0, value=99.0)
                 if st.form_submit_button("Salvar Filamento") and nome_fil:
-                    supabase.table('filamentos').insert({'nome': nome_fil, 'preco_kg': preco_fil}).execute()
+                    supabase.table('filamentos').insert({'marca': marca_fil, 'nome': nome_fil, 'cor': cor_fil, 'preco_kg': preco_fil}).execute()
                     st.success("✅ Filamento cadastrado!")
                     time.sleep(1)
                     st.rerun()
         else:
             if not filamentos_df.empty:
-                fil_ed = st.selectbox("Selecione o Filamento", filamentos_df['nome'].tolist())
-                row_fil = filamentos_df[filamentos_df['nome'] == fil_ed].iloc[0]
+                # Cria a lista compilada para a edição
+                filamentos_df['display'] = filamentos_df.apply(lambda x: f"{x.get('marca', 'S/N')} - {x['nome']} - {x.get('cor', 'S/N')}", axis=1)
+                fil_ed = st.selectbox("Selecione o Filamento", filamentos_df['display'].tolist())
+                row_fil = filamentos_df[filamentos_df['display'] == fil_ed].iloc[0]
                 fil_id = int(row_fil['id'])
                 
-                col1, col2 = st.columns(2)
-                with col1: novo_nome_fil = st.text_input("Nome do Filamento", value=row_fil['nome'])
-                with col2: novo_preco_fil = st.number_input("Custo Unitário (R$/KG)", min_value=0.0, value=float(row_fil['preco_kg']))
+                col_f1, col_f2, col_f3 = st.columns(3)
+                with col_f1: novo_marca_fil = st.text_input("Marca / Fornecedor", value=row_fil.get('marca', ''))
+                with col_f2: novo_nome_fil = st.text_input("Tipo", value=row_fil['nome'])
+                with col_f3: novo_cor_fil = st.text_input("Cor", value=row_fil.get('cor', ''))
+                
+                novo_preco_fil = st.number_input("Custo Unitário (R$/KG)", min_value=0.0, value=float(row_fil['preco_kg']))
                 
                 col_btn1, col_btn2 = st.columns(2)
                 if col_btn1.button("🔄 Atualizar Filamento", use_container_width=True):
-                    supabase.table('filamentos').update({'nome': novo_nome_fil, 'preco_kg': novo_preco_fil}).eq('id', fil_id).execute()
+                    supabase.table('filamentos').update({'marca': novo_marca_fil, 'nome': novo_nome_fil, 'cor': novo_cor_fil, 'preco_kg': novo_preco_fil}).eq('id', fil_id).execute()
                     st.success("✅ Atualizado!")
                     time.sleep(1)
                     st.rerun()
@@ -406,48 +420,70 @@ if menu == "⚙️ Módulo 1: CADASTROS":
                 st.button("✏️ Enviar para Edição (Módulo 2)", type="primary", use_container_width=True, on_click=preparar_edicao)
 
 # --- GESTÃO DE ESTOQUE (NOVO) ---
+    # --- GESTÃO DE ESTOQUE ---
     with tab_est:
-        st.subheader("📦 Controle de Estoque (Físico)")
-        st.caption("Alimente seu estoque inicial aqui. Quando uma venda for concluída, o sistema fará o desconto automático.")
+        st.subheader("📦 Visão Geral do Estoque")
+        fil_df = get_df('filamentos')
+        out_df = get_df('outros')
+        
+        col_v1, col_v2 = st.columns(2)
+        with col_v1:
+            st.markdown("**🧵 Filamentos Disponíveis**")
+            if not fil_df.empty:
+                df_fil_vis = fil_df.copy()
+                df_fil_vis['Filamento'] = df_fil_vis.apply(lambda x: f"{x.get('marca', '')} {x['nome']} {x.get('cor', '')}".strip(), axis=1)
+                df_fil_vis.rename(columns={'peso_estoque_g': 'Estoque (g)'}, inplace=True)
+                st.dataframe(df_fil_vis[['Filamento', 'Estoque (g)']], use_container_width=True, hide_index=True)
+            else:
+                st.info("Sem filamentos.")
+                
+        with col_v2:
+            st.markdown("**📦 Insumos Extras**")
+            if not out_df.empty:
+                df_out_vis = out_df.copy()
+                df_out_vis['Insumo'] = df_out_vis.apply(lambda x: f"{x.get('marca', '')} - {x['nome']}".strip(' -'), axis=1)
+                df_out_vis.rename(columns={'qtd_estoque': 'Qtd (Un)'}, inplace=True)
+                st.dataframe(df_out_vis[['Insumo', 'Qtd (Un)']], use_container_width=True, hide_index=True)
+            else:
+                st.info("Sem insumos.")
+                
+        st.divider()
+        st.subheader("⚖️ Atualização Manual")
+        st.caption("Alimente seu estoque inicial aqui. As vendas concluídas descontam automaticamente.")
         
         col_est1, col_est2 = st.columns(2, gap="large")
         
         with col_est1:
-            st.markdown("**🧵 Filamentos (Gramas)**")
-            fil_df = get_df('filamentos')
+            st.markdown("**🧵 Ajuste de Filamentos (g)**")
             if not fil_df.empty:
                 for idx, row in fil_df.iterrows():
                     peso_atual = float(row.get('peso_estoque_g', 0))
-                    # Usamos colunas para alinhar o input e o botão salvar lado a lado
+                    nome_comp = f"{row.get('marca', '')} {row['nome']} {row.get('cor', '')}".strip()
                     ce1, ce2 = st.columns([3, 1])
-                    with ce1: novo_peso = st.number_input(f"{row['nome']} (g)", value=peso_atual, step=50.0, key=f"est_fil_{row['id']}")
+                    with ce1: novo_peso = st.number_input(f"{nome_comp}", value=peso_atual, step=50.0, key=f"est_fil_{row['id']}")
                     with ce2: 
                         st.markdown("<br>", unsafe_allow_html=True)
-                        if st.button("💾", key=f"btn_fil_{row['id']}", help="Salvar Alteração"):
+                        if st.button("💾", key=f"btn_fil_{row['id']}", help="Salvar"):
                             supabase.table('filamentos').update({'peso_estoque_g': novo_peso}).eq('id', row['id']).execute()
                             st.success("Salvo!")
                             time.sleep(0.5)
                             st.rerun()
-            else:
-                st.info("Nenhum filamento cadastrado.")
-                
+                            
         with col_est2:
-            st.markdown("**📦 Outros Insumos (Unidades)**")
-            out_df = get_df('outros')
+            st.markdown("**📦 Ajuste de Insumos (Un)**")
             if not out_df.empty:
                 for idx, row in out_df.iterrows():
                     qtd_atual = int(row.get('qtd_estoque', 0))
+                    nome_out = f"{row.get('marca', '')} - {row['nome']}".strip(' -')
                     ce1, ce2 = st.columns([3, 1])
-                    with ce1: nova_qtd = st.number_input(f"{row['nome']} - {row['marca']} (Un)", value=qtd_atual, step=1, key=f"est_out_{row['id']}")
+                    with ce1: nova_qtd = st.number_input(f"{nome_out}", value=qtd_atual, step=1, key=f"est_out_{row['id']}")
                     with ce2:
                         st.markdown("<br>", unsafe_allow_html=True)
-                        if st.button("💾", key=f"btn_out_{row['id']}", help="Salvar Alteração"):
+                        if st.button("💾", key=f"btn_out_{row['id']}", help="Salvar"):
                             supabase.table('outros').update({'qtd_estoque': nova_qtd}).eq('id', row['id']).execute()
                             st.success("Salvo!")
                             time.sleep(0.5)
                             st.rerun()
-            else:
-                st.info("Nenhum insumo extra cadastrado.")
 
 # =====================================================================
 # MÓDULO 2: NOVO PROJETO 
@@ -534,11 +570,25 @@ elif menu == "🚀 Módulo 2: NOVO PROJETO":
             printer_selected = st.selectbox("Impressora", impressoras_df['nome'].tolist() if not impressoras_df.empty else ["Nenhuma"])
             printer_info = impressoras_df[impressoras_df['nome'] == printer_selected].iloc[0] if not impressoras_df.empty else None
         with col_m2:
-            fil_list = filamentos_df['nome'].tolist() if not filamentos_df.empty else ["Nenhum"]
+            printer_selected = st.selectbox("Impressora", impressoras_df['nome'].tolist() if not impressoras_df.empty else ["Nenhuma"])
+            printer_info = impressoras_df[impressoras_df['nome'] == printer_selected].iloc[0] if not impressoras_df.empty else None
+            
+            # Nova lógica da lista compilada para Filamentos
+            if not filamentos_df.empty:
+                filamentos_df['display'] = filamentos_df.apply(lambda x: f"{x.get('marca', 'S/N')} - {x['nome']} - {x.get('cor', 'S/N')}", axis=1)
+                fil_list = filamentos_df['display'].tolist()
+            else:
+                fil_list = ["Nenhum"]
+                
             idx_fil = fil_list.index(pb.get('material')) if pb.get('material') in fil_list else 0
             fil_selected = st.selectbox("Filamento", fil_list, index=idx_fil)
-            fil_info = filamentos_df[filamentos_df['nome'] == fil_selected].iloc[0] if not filamentos_df.empty else None
-            mat_cost_per_kg = float(fil_info['preco_kg']) if fil_info is not None else 0.0
+            
+            if not filamentos_df.empty:
+                fil_info = filamentos_df[filamentos_df['display'] == fil_selected].iloc[0]
+                mat_cost_per_kg = float(fil_info['preco_kg'])
+            else:
+                fil_info = None
+                mat_cost_per_kg = 0.0
 
         # Lógica para separar horas e minutos salvos no banco
         total_h_banco = float(pb.get('tempo_h', 0.0))
@@ -893,12 +943,17 @@ elif menu == "💰 Módulo 4: VENDAS":
                                 material_usado = peca_dados['material']
                                 peso_usado = float(peca_dados['peso_g'])
                                 
-                                fil_info = supabase.table('filamentos').select('id, peso_estoque_g').eq('nome', material_usado).execute()
-                                if fil_info.data:
-                                    fil_id = fil_info.data[0]['id']
-                                    peso_atual = float(fil_info.data[0]['peso_estoque_g'] or 0)
-                                    novo_peso = peso_atual - peso_usado
-                                    supabase.table('filamentos').update({'peso_estoque_g': novo_peso}).eq('id', fil_id).execute()
+                                # O robô agora busca na lista compilada
+                                fil_df_robo = get_df('filamentos')
+                                if not fil_df_robo.empty:
+                                    fil_df_robo['display'] = fil_df_robo.apply(lambda x: f"{x.get('marca', 'S/N')} - {x['nome']} - {x.get('cor', 'S/N')}", axis=1)
+                                    fil_encontrado = fil_df_robo[fil_df_robo['display'] == material_usado]
+                                    
+                                    if not fil_encontrado.empty:
+                                        fil_id = fil_encontrado.iloc[0]['id']
+                                        peso_atual = float(fil_encontrado.iloc[0]['peso_estoque_g'] or 0)
+                                        novo_peso = peso_atual - peso_usado
+                                        supabase.table('filamentos').update({'peso_estoque_g': novo_peso}).eq('id', int(fil_id)).execute()
                                 
                                 # 2. Baixa dos Insumos Extras (Unidades)
                                 extras_json = peca_dados.get('custos_extras', '[]')
